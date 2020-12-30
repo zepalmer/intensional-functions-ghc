@@ -334,6 +334,7 @@ Library
         GHC.IO.Handle.Lock.Windows
         GHC.StaticPtr.Internal
         GHC.Event.Internal.Types
+        GHC.Prim.Deprecated
         -- GHC.IOPort -- TODO: hide again after debug
         System.Environment.ExecutablePath
         System.CPUTime.Utils

@@ -36,6 +36,7 @@ module GHC.Exts
         FUN, -- See https://gitlab.haskell.org/ghc/ghc/issues/18302
         module GHC.Prim,
         module GHC.Prim.Ext,
+        module GHC.Prim.Deprecated,
         shiftL#, shiftRL#, iShiftL#, iShiftRA#, iShiftRL#,
         isTrue#,
         Void#, -- Previously exported by GHC.Prim
@@ -135,6 +136,7 @@ module GHC.Exts
        ) where
 
 import GHC.Prim hiding ( coerce, TYPE )
+import qualified GHC.Prim.Deprecated
 import qualified GHC.Prim
 import qualified GHC.Prim.Ext
 import GHC.Base hiding ( coerce )
