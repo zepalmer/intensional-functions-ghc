@@ -1179,7 +1179,7 @@ perf-nofib:
       popd
       rm -Rf tmp
     - export BOOT_HC=$GHC
-    - cabal update; cabal install -w "$BOOT_HC" --lib regex-compat
+    - cabal update; cabal install -w "$BOOT_HC" --lib parallel random stm regex-compat unboxed-ref
     - export PATH=$root/bin:$PATH
     - make -C nofib boot mode=fast -j$CPUS
     - "make -C nofib EXTRA_RUNTEST_OPTS='-cachegrind +RTS -V0 -RTS' NoFibRuns=1 mode=fast -j$CPUS 2>&1 | tee nofib.log"
