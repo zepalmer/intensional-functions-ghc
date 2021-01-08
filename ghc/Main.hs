@@ -32,6 +32,7 @@ import GHC.Driver.Backpack  ( doBackpack )
 import GHC.Driver.Plugins
 import GHC.Driver.Config.Logger (initLogFlags)
 import GHC.Driver.Config.Diagnostic
+import GHC.Driver.Monad
 
 import GHC.Platform
 import GHC.Platform.Ways
@@ -99,6 +100,10 @@ import Data.Bifunctor
 import GHC.Data.Graph.Directed
 import qualified Data.List.NonEmpty as NE
 
+#if defined(GHC_DEBUG)
+import GHC.Debug.Stub
+#endif
+
 -----------------------------------------------------------------------------
 -- ToDo:
 
@@ -110,6 +115,13 @@ import qualified Data.List.NonEmpty as NE
 
 -----------------------------------------------------------------------------
 -- GHC's command-line interface
+
+debugWrapper :: IO a -> IO a
+#if defined(GHC_DEBUG)
+debugWrapper = withGhcDebug
+#else
+debugWrapper = id
+#endif
 
 main :: IO ()
 main = do
@@ -159,8 +171,10 @@ main = do
                             ShowGhcUsage           -> showGhcUsage  dflags
                             ShowGhciUsage          -> showGhciUsage dflags
                             PrintWithDynFlags f    -> putStrLn (f dflags)
-                Right postLoadMode ->
-                    main' postLoadMode units dflags argv3 flagWarnings
+                Right postLoadMode -> do
+                    reifyGhc $ \session -> debugWrapper $
+                      reflectGhc (main' postLoadMode units dflags argv3 flagWarnings) session
+
 
 main' :: PostLoadMode -> [String] -> DynFlags -> [Located String] -> [Warn]
       -> Ghc ()
