@@ -97,7 +97,8 @@ extendOrigNameCache nc name
     extendNameCache nc (nameModule name) (nameOccName name) name
 
 extendNameCache :: OrigNameCache -> Module -> OccName -> Name -> OrigNameCache
-extendNameCache nc mod occ name
+extendNameCache nc mod occ !name
+  -- Avoid Name thunks in the name cache via explicit bang (#19124)
   = extendModuleEnvWith combine nc mod (unitOccEnv occ name)
   where
     combine _ occ_env = extendOccEnv occ_env occ name

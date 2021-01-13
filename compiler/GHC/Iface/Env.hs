@@ -110,20 +110,20 @@ allocateGlobalBinder name_supply mod occ loc
                   | otherwise
                   -> (new_name_supply, name')
                   where
-                    uniq            = nameUnique name
-                    name'           = mkExternalName uniq mod occ loc
-                                      -- name' is like name, but with the right SrcSpan
-                    new_cache       = extendNameCache (nsNames name_supply) mod occ name'
-                    new_name_supply = name_supply {nsNames = new_cache}
+                    uniq             = nameUnique name
+                    name'            = mkExternalName uniq mod occ loc
+                                       -- name' is like name, but with the right SrcSpan
+                    new_cache        = extendNameCache (nsNames name_supply) mod occ name'
+                    !new_name_supply = name_supply {nsNames = new_cache}
 
         -- Miss in the cache!
         -- Build a completely new Name, and put it in the cache
         _ -> (new_name_supply, name)
                   where
-                    (uniq, us')     = takeUniqFromSupply (nsUniqs name_supply)
-                    name            = mkExternalName uniq mod occ loc
-                    new_cache       = extendNameCache (nsNames name_supply) mod occ name
-                    new_name_supply = name_supply {nsUniqs = us', nsNames = new_cache}
+                    (uniq, us')      = takeUniqFromSupply (nsUniqs name_supply)
+                    name             = mkExternalName uniq mod occ loc
+                    new_cache        = extendNameCache (nsNames name_supply) mod occ name
+                    !new_name_supply = name_supply {nsUniqs = us', nsNames = new_cache}
 
 ifaceExportNames :: [IfaceExport] -> TcRnIf gbl lcl [AvailInfo]
 ifaceExportNames exports = return exports
