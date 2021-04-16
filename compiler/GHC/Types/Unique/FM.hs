@@ -64,7 +64,8 @@ module GHC.Types.Unique.FM (
         intersectUFM_C,
         disjointUFM,
         equalKeysUFM,
-        nonDetStrictFoldUFM, foldUFM, nonDetStrictFoldUFM_DirectlyM,
+        nonDetStrictFoldUFM, nonDetStrictFoldUFM_Directly,
+        foldUFM, nonDetStrictFoldUFM_DirectlyM,
         anyUFM, allUFM, seqEltsUFM,
         mapUFM, mapUFM_Directly,
         mapMaybeUFM,
@@ -411,6 +412,16 @@ nonDetKeysUFM (UFM m) = map getUnique $ M.keys m
 -- nondeterminism.
 nonDetStrictFoldUFM :: (elt -> a -> a) -> a -> UniqFM key elt -> a
 nonDetStrictFoldUFM k z (UFM m) = M.foldl' (flip k) z m
+
+-- See Note [Deterministic UniqFM] to learn about nondeterminism.
+-- If you use this please provide a justification why it doesn't introduce
+-- nondeterminism.
+{-# INLINE nonDetStrictFoldUFM_Directly #-} -- Allow specialization
+nonDetStrictFoldUFM_Directly :: (Unique -> a -> elt ->  a) -> a -> UniqFM key elt -> a
+nonDetStrictFoldUFM_Directly f z (UFM m) = M.foldlWithKey' c z m
+  -- See Note [List fusion and continuations in 'c']
+  where c acc u x = f (getUnique u) acc x
+        {-# INLINE c #-}
 
 -- | In essence foldM
 -- See Note [Deterministic UniqFM] to learn about nondeterminism.
