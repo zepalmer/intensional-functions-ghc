@@ -978,7 +978,7 @@ getLocalNonValBinders fixity_env
             = [( find_con_name rdr
                , concatMap find_con_decl_flds (unLoc cdflds) )]
         find_con_flds (L _ (ConDeclGADT { con_names = rdrs
-                                        , con_g_args = RecConGADT flds _ }))
+                                        , con_body = RecConGADT flds _ _ }))
             = [ ( find_con_name rdr
                  , concatMap find_con_decl_flds (unLoc flds))
               | L _ rdr <- rdrs ]

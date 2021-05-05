@@ -3224,8 +3224,8 @@ instance ExactPrint (ConDecl GhcPs) where
   exact (ConDeclGADT { con_g_ext = an
                      , con_names = cons
                      , con_bndrs = bndrs
-                     , con_mb_cxt = mcxt, con_g_args = args
-                     , con_res_ty = res_ty, con_doc = doc }) = do
+                     , con_mb_cxt = mcxt
+                     , con_body = body, con_doc = doc }) = do
     mapM_ markAnnotated doc
     mapM_ markAnnotated cons
     markEpAnn an AnnDcolon
@@ -3237,13 +3237,14 @@ instance ExactPrint (ConDecl GhcPs) where
     mapM_ markAnnotated mcxt
     when (isJust mcxt) $ markEpAnn an AnnDarrow
     -- mapM_ markAnnotated args
-    case args of
-        PrefixConGADT args' -> mapM_ markAnnotated args'
-        RecConGADT fields arr -> do
+    case body of
+        PrefixConGADT body' ->
+          exact_prefix_con_gadt_sig_body body'
+        RecConGADT fields arr res_ty -> do
           markAnnotated fields
           markUniToken arr
+          markAnnotated res_ty
           -- mapM_ markAnnotated (unLoc fields)
-    markAnnotated res_ty
   -- markAST _ (GHC.ConDeclGADT _ lns (GHC.L l forall) qvars mbCxt args typ _) = do
   --   setContext (Set.singleton PrefixOp) $ markListIntercalate lns
   --   mark GHC.AnnDcolon
@@ -3254,6 +3255,12 @@ instance ExactPrint (ConDecl GhcPs) where
   --   markLocated typ
   --   markManyOptional GHC.AnnCloseP
   --   markTrailingSemi
+      where
+        exact_prefix_con_gadt_sig_body (PCGSRes res_ty) =
+          markAnnotated res_ty
+        exact_prefix_con_gadt_sig_body (PCGSAnonArg arg_ty body') = do
+          markAnnotated arg_ty
+          exact_prefix_con_gadt_sig_body body'
 
 -- pprConDecl (ConDeclGADT { con_names = cons, con_qvars = qvars
 --                         , con_mb_cxt = mcxt, con_args = args

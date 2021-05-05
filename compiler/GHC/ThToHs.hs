@@ -684,7 +684,11 @@ cvtConstr (GadtC c strtys ty)
   = do  { c'      <- mapM cNameN c
         ; args    <- mapM cvt_arg strtys
         ; ty'     <- cvtType ty
-        ; mk_gadt_decl c' (PrefixConGADT $ map hsLinear args) ty'}
+        ; mk_gadt_decl c' $ PrefixConGADT $ mk_prefix_body args ty' }
+  where
+    mk_prefix_body :: [LHsType GhcPs] -> LHsType GhcPs -> PrefixConGadtSigBody GhcPs
+    mk_prefix_body args res = foldr (\arg body -> PCGSAnonArg (hsLinear arg) body)
+                                    (PCGSRes res) args
 
 cvtConstr (RecGadtC [] _varstrtys _ty)
   = failWith (text "RecGadtC must have at least one constructor name")
@@ -694,19 +698,18 @@ cvtConstr (RecGadtC c varstrtys ty)
         ; ty'      <- cvtType ty
         ; rec_flds <- mapM cvt_id_arg varstrtys
         ; lrec_flds <- returnLA rec_flds
-        ; mk_gadt_decl c' (RecConGADT lrec_flds noHsUniTok) ty' }
+        ; mk_gadt_decl c' $ RecConGADT lrec_flds noHsUniTok ty' }
 
-mk_gadt_decl :: [LocatedN RdrName] -> HsConDeclGADTDetails GhcPs -> LHsType GhcPs
+mk_gadt_decl :: [LocatedN RdrName] -> ConGadtSigBody GhcPs
              -> CvtM (LConDecl GhcPs)
-mk_gadt_decl names args res_ty
+mk_gadt_decl names body
   = do bndrs <- returnLA mkHsOuterImplicit
        returnLA $ ConDeclGADT
                    { con_g_ext  = noAnn
                    , con_names  = names
                    , con_bndrs  = bndrs
                    , con_mb_cxt = Nothing
-                   , con_g_args = args
-                   , con_res_ty = res_ty
+                   , con_body   = body
                    , con_doc    = Nothing }
 
 cvtSrcUnpackedness :: TH.SourceUnpackedness -> SrcUnpackedness
