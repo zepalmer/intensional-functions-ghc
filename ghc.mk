@@ -631,12 +631,6 @@ endef
 
 PRIMOPS_TXT_STAGE1 = compiler/stage1/build/primops.txt
 
-libraries/ghc-prim/dist-install/build/GHC/PrimopWrappers.hs : $$(genprimopcode_INPLACE) $(PRIMOPS_TXT_STAGE1) | $$(dir $$@)/.
-	"$(genprimopcode_INPLACE)" --make-haskell-wrappers < $(PRIMOPS_TXT_STAGE1) >$@
-
-# Required so that Haddock documents the primops.
-libraries/ghc-prim_dist-install_EXTRA_HADDOCK_SRCS = libraries/ghc-prim/dist-install/build/autogen/GHC/Prim.hs
-
 # -----------------------------------------------------------------------------
 # Include build instructions from all subdirs
 BUILD_DIRS += utils/mkdirhier
@@ -859,11 +853,6 @@ install : install_darwin
 install_darwin:
 	if [ -e "${XATTR}" ]; then "${XATTR}" -c -r .; fi
 endif # Darwin_Host
-
-ifneq "$(BINDIST)" "YES"
-$(ghc-prim-$(libraries/ghc-prim_dist-install_VERSION)_HADDOCK_FILE): \
-    libraries/ghc-prim/dist-install/build/autogen/GHC/Prim.hs
-endif # BINDIST
 
 libraries/ghc-prim/dist-install/build/autogen/GHC/Prim.hs: \
                             $(PRIMOPS_TXT_STAGE1) $$(genprimopcode_INPLACE) \

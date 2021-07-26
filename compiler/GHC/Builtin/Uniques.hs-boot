@@ -21,7 +21,6 @@ mkTupleDataConUnique :: Boxity -> Arity -> Unique
 mkAlphaTyVarUnique     :: Int -> Unique
 mkPreludeClassUnique   :: Int -> Unique
 mkPrimOpIdUnique       :: Int -> Unique
-mkPrimOpWrapperUnique  :: Int -> Unique
 mkPreludeMiscIdUnique  :: Int -> Unique
 
 mkPseudoUniqueE, mkBuiltinUnique :: Int -> Unique

@@ -9,7 +9,7 @@ import GHC.Prelude
 
 -- primop rules are attached to primop ids
 import {-# SOURCE #-} GHC.Core.Opt.ConstantFold (primOpRules)
-import GHC.Core.Type (mkForAllTys, mkVisFunTysMany, argsHaveFixedRuntimeRep )
+import GHC.Core.Type (mkForAllTys, mkVisFunTysMany, argsHaveFixedRuntimeRep, typeHasFixedRuntimeRep )
 import GHC.Core.FVs (mkRuleInfo)
 
 import GHC.Builtin.PrimOps
@@ -39,7 +39,7 @@ mkPrimOpId prim_op
                          (mkPrimOpIdUnique (primOpTag prim_op))
                          (AnId id) UserSyntax
     id   = mkGlobalId (PrimOpId prim_op lev_poly) name ty info
-    lev_poly = not (argsHaveFixedRuntimeRep ty)
+    lev_poly = not (argsHaveFixedRuntimeRep ty && typeHasFixedRuntimeRep res_ty)
 
     -- PrimOps don't ever construct a product, but we want to preserve bottoms
     cpr

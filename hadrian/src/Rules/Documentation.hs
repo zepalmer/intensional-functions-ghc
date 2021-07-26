@@ -241,10 +241,6 @@ buildPackageDocumentation = do
         need [ takeDirectory file  -/- "haddock-prologue.txt"]
         haddocks <- haddockDependencies context
 
-        -- `ghc-prim` has a source file for 'GHC.Prim' which is generated just
-        -- for Haddock. We need to 'union' (instead of '++') to avoid passing
-        -- 'GHC.PrimopWrappers' (which unfortunately shows up in both
-        -- `generatedSrcs` and `vanillaSrcs`) to Haddock twice.
         generatedSrcs <- interpretInContext context (Expression.package ghcPrim ? ghcPrimDependencies)
         vanillaSrcs <- hsSources context
         let srcs = vanillaSrcs `union` generatedSrcs

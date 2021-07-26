@@ -2949,3 +2949,8 @@ INFO_TABLE_RET(stg_keepAlive_frame, RET_SMALL, KEEP_ALIVE_FRAME_FIELDS(W_,P_, in
 {
     return (ret);
 }
+
+stg_seqzh ( P_ c )
+{
+    ENTER(c);
+}

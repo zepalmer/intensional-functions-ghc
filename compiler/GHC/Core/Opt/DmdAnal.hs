@@ -28,6 +28,7 @@ import Data.List        ( mapAccumL )
 import GHC.Core.DataCon
 import GHC.Types.ForeignCall ( isSafeForeignCall )
 import GHC.Types.Id
+import GHC.Types.Name    ( isWiredIn )
 import GHC.Core.Utils
 import GHC.Core.TyCon
 import GHC.Core.Type
@@ -900,7 +901,8 @@ dmdTransform env var sd
   = -- pprTrace "dmdTransform:DictSel" (ppr var $$ ppr (idDmdSig var) $$ ppr sd) $
     dmdTransformDictSelSig (idDmdSig var) sd
   -- Imported functions
-  | isGlobalId var
+  -- N.B. wired-in names may be GlobalIds and yet not imported.
+  | isGlobalId var && not (isWiredIn var)
   , let res = dmdTransformSig (idDmdSig var) sd
   = -- pprTrace "dmdTransform:import" (vcat [ppr var, ppr (idDmdSig var), ppr sd, ppr res])
     res

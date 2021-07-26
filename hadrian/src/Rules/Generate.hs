@@ -35,7 +35,7 @@ ghcPrimDependencies :: Expr [FilePath]
 ghcPrimDependencies = do
     stage <- getStage
     path  <- expr $ buildPath (vanillaContext stage ghcPrim)
-    return [path -/- "GHC/Prim.hs", path -/- "GHC/PrimopWrappers.hs"]
+    return [path -/- "GHC/Prim.hs"]
 
 rtsDependencies :: Expr [FilePath]
 rtsDependencies = do
@@ -122,7 +122,6 @@ generatePackageCode context@(Context stage pkg _) = do
             root -/- "**" -/- dir -/- "*.hs-incl" %> genPrimopCode context
         when (pkg == ghcPrim) $ do
             root -/- "**" -/- dir -/- "GHC/Prim.hs" %> genPrimopCode context
-            root -/- "**" -/- dir -/- "GHC/PrimopWrappers.hs" %> genPrimopCode context
         when (pkg == ghcBoot) $ do
             root -/- "**" -/- dir -/- "GHC/Version.hs" %> go generateVersionHs
             root -/- "**" -/- dir -/- "GHC/Platform/Host.hs" %> go generatePlatformHostHs

@@ -49,9 +49,10 @@ import GHC.Types.Demand    ( isUsedOnceDmd )
 import GHC.Types.SrcLoc    ( mkGeneralSrcSpan )
 
 import GHC.Unit.Module
+import GHC.Builtin.PrimOps.Ids ( primOpId )
 import GHC.Data.FastString
 import GHC.Platform.Ways
-import GHC.Builtin.PrimOps ( PrimCall(..), primOpWrapperId )
+import GHC.Builtin.PrimOps ( PrimCall(..) )
 
 import GHC.Utils.Outputable
 import GHC.Utils.Monad
@@ -548,8 +549,8 @@ coreToStgApp f args ticks = do
                 -- Some primitive operator that might be implemented as a library call.
                 -- As noted by Note [Eta expanding primops] in GHC.Builtin.PrimOps
                 -- we require that primop applications be saturated.
-                PrimOpId op _    -> -- assertPpr saturated (ppr f <+> ppr args) $
-                                    StgOpApp (StgPrimOp op) args' res_ty
+                PrimOpId op _
+                  | saturated    -> StgOpApp (StgPrimOp op) args' res_ty
 
                 -- A call to some primitive Cmm function.
                 FCallId (CCall (CCallSpec (StaticTarget _ lbl (Just pkgId) True)
@@ -602,7 +603,7 @@ coreToStgArgs (arg : args) = do         -- Non-type argument
         stg_arg = case arg'' of
            StgApp v []                  -> StgVarArg v
            StgConApp con _ [] _         -> StgVarArg (dataConWorkId con)
-           StgOpApp (StgPrimOp op) [] _ -> StgVarArg (primOpWrapperId op)
+           StgOpApp (StgPrimOp op) [] _ -> StgVarArg (primOpId op)
            StgLit lit                   -> StgLitArg lit
            _ -> pprPanic "coreToStgArgs" (ppr arg $$ pprStgExpr panicStgPprOpts arg' $$ pprStgExpr panicStgPprOpts arg'')
 
