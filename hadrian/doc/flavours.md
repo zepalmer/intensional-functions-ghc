@@ -240,6 +240,10 @@ The supported transformers are listed below:
         <td><code>ipe</code></td>
         <td>Build the stage2 libraries with IPE debugging information for use with -hi profiling.</td>
     </tr>
+    <tr>
+        <td><code>fully_static</code></td>
+        <td>Produce fully statically-linked executables and build libraries suitable for static linking.</td>
+    </tr>
 </table>
 
 ### Static
