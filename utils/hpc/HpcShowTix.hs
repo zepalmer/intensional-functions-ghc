@@ -54,9 +54,9 @@ showtix_main flags (prog:modNames) = do
        sequence_ [ sequence_ [ putStrLn (rjust 5 (show ix) ++ " " ++
                                          rjust 10 (show count) ++ " " ++
                                          ljust 20  (T.unpack modName) ++ " " ++ rjust 20 (show pos) ++ " " ++ show lab)
-                             | (count,ix,(pos,lab)) <- zip3 tixs' [(0::Int)..] entries
+                             | (count,ix,(pos,lab)) <- zip3 (tickCountsToList $ tixModuleTixs tm) [(0::Int)..] entries
                              ]
-                 | ( TixModule modName _hash1 _ tixs'
+                 | ( tm@(TixModule modName _hash1 _)
                    , Mix _file _timestamp _hash2 _tab entries
                    ) <- tixs_mixs
                  ]

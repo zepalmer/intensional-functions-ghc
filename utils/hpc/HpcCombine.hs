@@ -13,6 +13,7 @@ import HpcFlags
 import Control.Monad
 import qualified Data.Set as Set
 import qualified Data.Map as Map
+import qualified Data.IntMap as IM
 import qualified Data.Text as T
 
 ------------------------------------------------------------------------------
@@ -141,7 +142,7 @@ mergeTix modComb f
                || tixModuleTickCount tm1 /= tixModuleTickCount tm2
                      -> error $ "mismatched in module " ++ T.unpack m
                | otherwise      ->
-                     mkTixModule' m (tixModuleHash tm1) (tixModuleTickCount tm1) (zipWith f (tixModuleTixs tm1) (tixModuleTixs tm2))
+                     mkTixModule m (tixModuleHash tm1) (mergeTickCounts f (tixModuleTixs tm1) (tixModuleTixs tm2))
             (Just m1,Nothing) ->
                   m1
             (Nothing,Just m2) ->
@@ -189,9 +190,12 @@ instance Strict Tix where
   strict (Tix t1) =
             Tix $! strict t1
 
+instance Strict TickCounts where
+  strict i = i
+
 instance Strict TixModule where
-  strict (TixModule m1 p1 i1 t1) =
-            ((((TixModule $! strict m1) $! strict p1) $! strict i1) $! strict t1)
+  strict (TixModule m1 p1 t1) =
+            (((TixModule $! strict m1) $! strict p1)) $! strict t1
 
 instance Strict T.Text where
   strict i = i

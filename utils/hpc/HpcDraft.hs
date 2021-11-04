@@ -48,7 +48,7 @@ draft_main hpcflags (progName:mods) = do
     Just (Tix tickCounts) -> do
         outs <- sequence
                       [ makeDraft hpcflags1 tixModule
-                      | tixModule@(TixModule m _ _ _) <- tickCounts
+                      | tixModule@(TixModule m _ _) <- tickCounts
                       , allowModule hpcflags1 m
                       ]
         case outputFile hpcflags1 of
@@ -60,7 +60,7 @@ draft_main hpcflags (progName:mods) = do
 makeDraft :: Flags -> TixModule -> IO String
 makeDraft hpcflags tix = do
   let modu = tixModuleName tix
-      tixs = tixModuleTixs tix
+      tixs = tickCountsToList $ tixModuleTixs tix
 
   (Mix filepath _ _ _ entries) <- readMixWithFlags hpcflags (Right tix)
 

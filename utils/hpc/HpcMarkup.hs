@@ -162,8 +162,8 @@ genHtmlFromMod dest_dir flags tix theFunTotals invertOutput = do
   (Mix origFile _ _ tabStop mix') <- readMixWithFlags flags (Right tix)
 
   let arr_tix :: Array Int Integer
-      arr_tix = listArray (0,length (tixModuleTixs tix) - 1)
-              $ tixModuleTixs tix
+      arr_tix = listArray (0,tickCountsSize (tixModuleTixs tix) - 1)
+              $ tickCountsToList $ tixModuleTixs tix
 
   let tickedWith :: Int -> Integer
       tickedWith n = arr_tix ! n

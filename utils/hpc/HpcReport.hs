@@ -151,16 +151,16 @@ single (LocalBox _) = True
 single (BinBox {}) = False
 
 modInfo :: Flags -> Bool -> TixModule -> IO ModInfo
-modInfo hpcflags qualDecList tix@(TixModule moduleName _ _ tickCounts) = do
+modInfo hpcflags qualDecList tix@(TixModule moduleName _ _) = do
     Mix _ _ _ _ mes <- readMixWithFlags hpcflags (Right tix)
-    return (q (accumCounts (zip (map snd mes) tickCounts) miZero))
+    return (q (accumCounts (zip (map snd mes) (tickCountsToList $ tixModuleTixs tix)) miZero))
   where
   q mi
     | qualDecList = mi{decPaths = map (T.unpack moduleName:) (decPaths mi)}
     | otherwise   = mi
 
 modReport :: Flags -> TixModule -> IO ()
-modReport hpcflags tix@(TixModule moduleName _ _ _) = do
+modReport hpcflags tix@(TixModule moduleName _ _) = do
   mi <- modInfo hpcflags False tix
   if xmlOutput hpcflags
     then putStrLn $ "  <module name = " ++ show moduleName  ++ ">"
@@ -225,7 +225,7 @@ report_main hpcflags (progName:mods) = do
            makeReport hpcflags1 progName
                     $ sortBy (\ mod1 mod2 -> tixModuleName mod1 `compare` tixModuleName mod2)
                     $ [ tix'
-                      | tix'@(TixModule m _ _ _) <- tickCounts
+                      | tix'@(TixModule m _ _) <- tickCounts
                       , allowModule hpcflags1 m
                       ]
     Nothing -> hpcError report_plugin  $ "unable to find tix file for:" ++ progName
