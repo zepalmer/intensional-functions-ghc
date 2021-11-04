@@ -6,6 +6,7 @@ import Trace.Hpc.Tix
 import HpcFlags
 
 import qualified Data.Set as Set
+import qualified Data.Text as T
 
 showtix_options :: FlagOptSeq
 showtix_options
@@ -32,7 +33,7 @@ showtix_main :: Flags -> [String] -> IO ()
 showtix_main _     [] = hpcError showtix_plugin $ "no .tix file or executable name specified"
 showtix_main flags (prog:modNames) = do
   let hpcflags1 = flags
-                { includeMods = Set.fromList modNames
+                { includeMods = Set.fromList (map T.pack modNames)
                                    `Set.union`
                                 includeMods flags }
 
@@ -52,7 +53,7 @@ showtix_main flags (prog:modNames) = do
 
        sequence_ [ sequence_ [ putStrLn (rjust 5 (show ix) ++ " " ++
                                          rjust 10 (show count) ++ " " ++
-                                         ljust 20  modName ++ " " ++ rjust 20 (show pos) ++ " " ++ show lab)
+                                         ljust 20  (T.unpack modName) ++ " " ++ rjust 20 (show pos) ++ " " ++ show lab)
                              | (count,ix,(pos,lab)) <- zip3 tixs' [(0::Int)..] entries
                              ]
                  | ( TixModule modName _hash1 _ tixs'

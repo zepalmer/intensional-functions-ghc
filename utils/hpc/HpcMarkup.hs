@@ -19,6 +19,7 @@ import Data.Semigroup as Semi
 import Data.Array
 import Control.Monad
 import qualified Data.Set as Set
+import qualified Data.Text as T
 
 ------------------------------------------------------------------------------
 
@@ -49,7 +50,7 @@ markup_plugin = Plugin { name = "markup"
 markup_main :: Flags -> [String] -> IO ()
 markup_main flags (prog:modNames) = do
   let hpcflags1 = flags
-                { includeMods = Set.fromList modNames
+                { includeMods = Set.fromList (map T.pack modNames)
                                    `Set.union`
                                 includeMods flags }
   let Flags
@@ -156,7 +157,7 @@ genHtmlFromMod
   -> IO (String, [Char], ModuleSummary)
 genHtmlFromMod dest_dir flags tix theFunTotals invertOutput = do
   let theHsPath = srcDirs flags
-  let modName0 = tixModuleName tix
+  let modName0 = T.unpack $ tixModuleName tix
 
   (Mix origFile _ _ tabStop mix') <- readMixWithFlags flags (Right tix)
 

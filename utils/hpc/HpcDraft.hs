@@ -8,6 +8,7 @@ import HpcFlags
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map
+import qualified Data.Text as T
 import HpcUtils
 import Data.Tree
 
@@ -38,7 +39,7 @@ draft_main :: Flags -> [String] -> IO ()
 draft_main _        []              = error "draft_main: unhandled case: []"
 draft_main hpcflags (progName:mods) = do
   let hpcflags1 = hpcflags
-                { includeMods = Set.fromList mods
+                { includeMods = Set.fromList (map T.pack mods)
                                    `Set.union`
                                 includeMods hpcflags }
   let prog = getTixFileName $ progName
@@ -109,7 +110,7 @@ makeDraft hpcflags tix = do
 
       spaces d = take d (repeat ' ')
 
-  return $ "module " ++ show (fixPackageSuffix modu) ++ " {\n" ++
+  return $ "module " ++ show (fixPackageSuffix $ T.unpack modu) ++ " {\n" ++
          showPleaseTicks 2 non_ticked ++ "}"
 
 fixPackageSuffix :: String -> String

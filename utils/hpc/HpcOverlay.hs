@@ -7,6 +7,7 @@ import Trace.Hpc.Tix
 import Trace.Hpc.Mix
 import Trace.Hpc.Util
 import qualified Data.Map as Map
+import qualified Data.Text as T
 import Data.Tree
 
 overlay_options :: FlagOptSeq
@@ -38,7 +39,7 @@ overlay_main flags files = do
   mod_info <-
      sequence [ do mix@(Mix origFile _ _ _ _) <- readMixWithFlags flags (Left modu)
                    content <- readFileFromPath (hpcError overlay_plugin) origFile (srcDirs flags)
-                   processModule modu content mix mod_spec globals
+                   processModule (T.pack modu) content mix mod_spec globals
               | (modu, mod_spec) <- Map.toList modules1
               ]
 
@@ -50,7 +51,7 @@ overlay_main flags files = do
     out -> writeFile out (show tix)
 
 
-processModule :: String         -- ^ module name
+processModule :: T.Text         -- ^ module name
               -> String         -- ^ module contents
               -> Mix            -- ^ mix entry for this module
               -> [Tick]         -- ^ local ticks

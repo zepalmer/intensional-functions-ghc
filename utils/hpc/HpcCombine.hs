@@ -13,6 +13,7 @@ import HpcFlags
 import Control.Monad
 import qualified Data.Set as Set
 import qualified Data.Map as Map
+import qualified Data.Text as T
 
 ------------------------------------------------------------------------------
 sum_options :: FlagOptSeq
@@ -112,9 +113,7 @@ map_main flags [first_file] = do
   Just tix <- readTix first_file
 
   let (Tix inside_tix) = filterTix flags tix
-  let tix' = Tix [ TixModule m p i (map f t)
-                 | TixModule m p i t <- inside_tix
-                 ]
+  let tix' = Tix $ map (mapTixModule f) inside_tix
 
   case outputFile flags of
     "-" -> putStrLn (show tix')
@@ -137,14 +136,12 @@ mergeTix modComb f
          (Tix t2)  = Tix
          [ case (Map.lookup m fm1,Map.lookup m fm2) of
            -- todo, revisit the semantics of this combination
-            (Just (TixModule _ hash1 len1 tix1),Just (TixModule _ hash2 len2 tix2))
-               | hash1 /= hash2
-               || length tix1 /= length tix2
-               || len1 /= length tix1
-               || len2 /= length tix2
-                     -> error $ "mismatched in module " ++ m
+            (Just tm1, Just tm2)
+               | tixModuleHash tm1 /= tixModuleHash tm2
+               || tixModuleTickCount tm1 /= tixModuleTickCount tm2
+                     -> error $ "mismatched in module " ++ T.unpack m
                | otherwise      ->
-                     TixModule m hash1 len1 (zipWith f tix1 tix2)
+                     mkTixModule' m (tixModuleHash tm1) (tixModuleTickCount tm1) (zipWith f (tixModuleTixs tm1) (tixModuleTixs tm2))
             (Just m1,Nothing) ->
                   m1
             (Nothing,Just m2) ->
@@ -196,3 +193,5 @@ instance Strict TixModule where
   strict (TixModule m1 p1 i1 t1) =
             ((((TixModule $! strict m1) $! strict p1) $! strict i1) $! strict t1)
 
+instance Strict T.Text where
+  strict i = i

@@ -12,6 +12,7 @@ import Trace.Hpc.Mix
 import Trace.Hpc.Tix
 import Control.Monad hiding (guard)
 import qualified Data.Set as Set
+import qualified Data.Text as T
 
 notExpecting :: String -> a
 notExpecting s = error ("not expecting "++s)
@@ -151,18 +152,19 @@ single (BinBox {}) = False
 
 modInfo :: Flags -> Bool -> TixModule -> IO ModInfo
 modInfo hpcflags qualDecList tix@(TixModule moduleName _ _ tickCounts) = do
-  Mix _ _ _ _ mes <- readMixWithFlags hpcflags (Right tix)
-  return (q (accumCounts (zip (map snd mes) tickCounts) miZero))
+    Mix _ _ _ _ mes <- readMixWithFlags hpcflags (Right tix)
+    return (q (accumCounts (zip (map snd mes) tickCounts) miZero))
   where
-  q mi = if qualDecList then mi{decPaths = map (moduleName:) (decPaths mi)}
-         else mi
+  q mi
+    | qualDecList = mi{decPaths = map (T.unpack moduleName:) (decPaths mi)}
+    | otherwise   = mi
 
 modReport :: Flags -> TixModule -> IO ()
 modReport hpcflags tix@(TixModule moduleName _ _ _) = do
   mi <- modInfo hpcflags False tix
   if xmlOutput hpcflags
     then putStrLn $ "  <module name = " ++ show moduleName  ++ ">"
-    else putStrLn ("-----<module "++moduleName++">-----")
+    else putStrLn ("-----<module "++T.unpack moduleName++">-----")
   printModInfo hpcflags mi
   if xmlOutput hpcflags
     then putStrLn $ "  </module>"
@@ -213,7 +215,7 @@ report_plugin = Plugin { name = "report"
 report_main :: Flags -> [String] -> IO ()
 report_main hpcflags (progName:mods) = do
   let hpcflags1 = hpcflags
-                { includeMods = Set.fromList mods
+                { includeMods = Set.fromList (map T.pack mods)
                                    `Set.union`
                                 includeMods hpcflags }
   let prog = getTixFileName $ progName

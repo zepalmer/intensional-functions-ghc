@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 -- (c) 2007 Andy Gill
 
 module HpcFlags where
@@ -9,11 +11,12 @@ import Trace.Hpc.Tix
 import Trace.Hpc.Mix
 import System.Exit
 import System.FilePath
+import qualified Data.Text as T
 
 data Flags = Flags
   { outputFile          :: String
-  , includeMods         :: Set.Set String
-  , excludeMods         :: Set.Set String
+  , includeMods         :: Set.Set T.Text
+  , excludeMods         :: Set.Set T.Text
   , hpcDirs             :: [String]
   , srcDirs             :: [String]
   , destDir             :: String
@@ -93,10 +96,10 @@ excludeOpt, includeOpt, hpcDirOpt, resetHpcDirsOpt, srcDirOpt,
     altHighlightOpt, combineFunOpt, combineFunOptInfo, mapFunOpt,
     mapFunOptInfo, unionModuleOpt :: FlagOptSeq
 excludeOpt      = anArg "exclude"    "exclude MODULE and/or PACKAGE" "[PACKAGE:][MODULE]"
-                $ \ a f -> f { excludeMods = a `Set.insert` excludeMods f }
+                $ \ a f -> f { excludeMods = T.pack a `Set.insert` excludeMods f }
 
 includeOpt      = anArg "include"    "include MODULE and/or PACKAGE" "[PACKAGE:][MODULE]"
-                $ \ a f -> f { includeMods = a `Set.insert` includeMods f }
+                $ \ a f -> f { includeMods = T.pack a `Set.insert` includeMods f }
 
 hpcDirOpt       = anArg "hpcdir"     "append sub-directory that contains .mix files" "DIR"
                    (\ a f -> f { hpcDirs = hpcDirs f ++ [a] })
@@ -197,7 +200,7 @@ data Plugin = Plugin { name           :: String
 --  * includes the rest if there are no explicitly included modules
 --  * otherwise, accepts just the included modules.
 
-allowModule :: Flags -> String -> Bool
+allowModule :: Flags -> T.Text -> Bool
 allowModule flags full_mod
       | full_mod' `Set.member` excludeMods flags = False
       | pkg_name  `Set.member` excludeMods flags = False
@@ -208,13 +211,13 @@ allowModule flags full_mod
       | mod_name  `Set.member` includeMods flags = True
       | otherwise                                = False
   where
-          full_mod' = pkg_name ++ mod_name
+      full_mod' = pkg_name <> mod_name
       -- pkg name always ends with '/', main
-          (pkg_name,mod_name) =
-                        case span (/= '/') full_mod of
-                     (p,'/':m) -> (p ++ ":",m)
-                     (m,[])    -> (":",m)
-                     _         -> error "impossible case in allowModule"
+      (pkg_name, mod_name) =
+        case T.splitOn "/" full_mod of
+             [p,m] -> (p <> ":", m)
+             [m]   -> (":", m)
+             _     -> error "impossible case in allowModule"
 
 filterTix :: Flags -> Tix -> Tix
 filterTix flags (Tix tixs) =
