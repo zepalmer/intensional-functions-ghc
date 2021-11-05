@@ -2,7 +2,7 @@
 # ----------------------
 # whether to use libbfd for debugging RTS
 AC_DEFUN([FP_BFD_SUPPORT], [
-    HaveLibbfd=NO
+    haveLibbfd=NO
     AC_ARG_ENABLE(bfd-debug,
         [AS_HELP_STRING([--enable-bfd-debug],
               [Enable symbol resolution for -debug rts ('+RTS -Di') via binutils' libbfd [default=no]])],
@@ -40,10 +40,9 @@ AC_DEFUN([FP_BFD_SUPPORT], [
                                     bfd_get_symbol_info(abfd,symbol_table[0],&info);
                                 }
                         ]])],
-                        HaveLibbfd=YES,dnl bfd seems to work
+                        haveLibbfd=YES dnl bfd seems to work
                         [AC_MSG_ERROR([can't use 'bfd' library])])
             LIBS="$save_LIBS"
         ]
     )
-    AC_SUBST([UseLibbfd],[$HaveLibbfd])
 ])
