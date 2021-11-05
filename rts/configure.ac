@@ -33,6 +33,9 @@ GHC_CONVERT_PLATFORM_PARTS([host], [Host])
 FPTOOLS_SET_PLATFORM_VARS([host], [Host])
 FPTOOLS_SET_HASKELL_PLATFORM_VARS([Host])
 
+GHC_ADJUSTORS_METHOD([Host])
+AC_SUBST([UseLibffiForAdjustors])
+
 dnl ** Other RTS features
 dnl --------------------------------------------------------------
 AC_DEFINE_UNQUOTED([USE_LIBDW], [$CABAL_FLAG_libdw], [Set to 1 to use libdw])
