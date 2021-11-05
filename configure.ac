@@ -1124,7 +1124,14 @@ AC_SUBST([UseLibffiForAdjustors])
 dnl ** Other RTS features
 dnl --------------------------------------------------------------
 FP_FIND_LIBDW
+AC_SUBST(UseLibdw)
+AC_SUBST(LibdwLibDir)
+AC_SUBST(LibdwIncludeDir)
+
 FP_FIND_LIBNUMA
+AC_SUBST(UseLibNuma)
+AC_SUBST(LibNumaLibDir)
+AC_SUBST(LibNumaIncludeDir)
 
 dnl ** Documentation
 dnl --------------------------------------------------------------
