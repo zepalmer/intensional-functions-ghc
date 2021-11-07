@@ -142,28 +142,6 @@ if test "$EnableDistroToolchain" = "YES"; then
   TarballsAutodownload=NO
 fi
 
-AC_ARG_ENABLE(asserts-all-ways,
-[AS_HELP_STRING([--enable-asserts-all-ways],
-                [Usually ASSERTs are only compiled in the DEBUG way,
-                 this will enable them in all ways.])],
-  [FP_CAPITALIZE_YES_NO(["$enableval"], [EnableAssertsAllWays])],
-  [EnableAssertsAllWays=NO]
-)
-if test "$enable_asserts_all_ways" = "yes" ; then
-   AC_DEFINE([USE_ASSERTS_ALL_WAYS], [1], [Compile-in ASSERTs in all ways.])
-fi
-
-AC_ARG_ENABLE(native-io-manager,
-[AS_HELP_STRING([--enable-native-io-manager],
-                [Enable the native I/O manager by default.])],
-  [FP_CAPITALIZE_YES_NO(["$enableval"], [EnableNativeIOManager])],
-  [EnableNativeIOManager=NO]
-)
-if test "$EnableNativeIOManager" = "YES"; then
-  AC_DEFINE_UNQUOTED([DEFAULT_NATIVE_IO_MANAGER], [1], [Enable Native I/O manager as default.])
-fi
-
-
 dnl CC_STAGE0, LD_STAGE0, AR_STAGE0 are like the "previous" variable
 dnl CC, LD, AR (inherited by CC_STAGE[123], etc.)
 dnl but instead used by stage0 for bootstrapping stage1
@@ -325,9 +303,6 @@ dnl ** Do a build with tables next to code?
 dnl --------------------------------------------------------------
 
 GHC_TABLES_NEXT_TO_CODE
-if test x"$TablesNextToCode" = xYES; then
-   AC_DEFINE([TABLES_NEXT_TO_CODE], [1], [Define to 1 if info tables are laid out next to code])
-fi
 AC_SUBST(TablesNextToCode)
 
 dnl ** Does target have runtime linker support?
@@ -637,14 +612,17 @@ dnl    unregisterised, Sparc, and PPC backends. Also determines whether
 dnl    linking to libatomic is required for atomic operations, e.g. on
 dnl    RISCV64 GCC.
 FP_CC_SUPPORTS__ATOMICS
+if test "$need_latomic" = 1; then
+    AC_SUBST([NeedLibatomic],[YES])
+else
+    AC_SUBST([NeedLibatomic],[NO])
+fi
 
 FP_GCC_EXTRA_FLAGS
 
 dnl ** look to see if we have a C compiler using an llvm back end.
 dnl
 FP_CC_LLVM_BACKEND
-AS_IF([test x"$CcLlvmBackend" = x"YES"],
-  [AC_DEFINE([CC_LLVM_BACKEND], [1], [Define (to 1) if C compiler has an LLVM back end])])
 AC_SUBST(CcLlvmBackend)
 
 FPTOOLS_SET_C_LD_FLAGS([target],[CFLAGS],[LDFLAGS],[IGNORE_LINKER_LD_FLAGS],[CPPFLAGS])
