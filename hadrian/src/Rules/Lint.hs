@@ -20,6 +20,8 @@ lintRules = do
       cmd_ (Cwd "libraries/base") "./configure"
   "rts" -/- "include" -/- "ghcautoconf.h" %> \_ ->
       cmd_ (Cwd "rts") "./configure"
+  "rts" -/- "include" -/- "ghcplatform.h" %> \_ ->
+      cmd_ (Cwd "rts") "./configure"
 
 lint :: Action () -> Action ()
 lint lintAction = do
@@ -66,7 +68,6 @@ base = do
   let includeDirs =
         [ "rts/include"
         , "libraries/base/include"
-        , stage1RtsInc
         ]
   runHLint includeDirs [] "libraries/base"
 
