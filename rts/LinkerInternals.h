@@ -16,6 +16,9 @@
 #include <sys/mman.h>
 #endif
 
+/* See Note [Refuse to generate jump islands for _info symbols] */
+void isTntcSymbol(const char *);
+
 void printLoadedObjects(void);
 
 #include "BeginPrivate.h"
