@@ -463,9 +463,8 @@ rnSpliceExpr splice
                 runRnSplice UntypedExpSplice runMetaE ppr rn_splice
            ; (lexpr3, fvs) <- checkNoErrs (rnLExpr rn_expr)
              -- See Note [Delaying modFinalizers in untyped splices].
-           ; let e =  HsSpliceE noAnn
-                    . HsSpliced noExtField (ThModFinalizers mod_finalizers)
-                    . HsSplicedExpr
+           ; let e =  XExpr
+                    . AddModFinalizers (ThModFinalizers mod_finalizers)
                         <$> lexpr3
            ; return (gHsPar e, fvs)
            }
@@ -575,6 +574,7 @@ This note and approach originated in #18102.
 {- Note [Delaying modFinalizers in untyped splices]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+TODO RGS: Update this
 When splices run in the renamer, 'reify' does not have access to the local
 type environment (#11832, [1]).
 

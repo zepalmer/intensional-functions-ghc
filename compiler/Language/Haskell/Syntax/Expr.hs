@@ -1611,7 +1611,7 @@ instance Data ThModFinalizers where
 --
 -- Values that can result from running a splice.
 data HsSplicedThing id
-    = HsSplicedExpr (HsExpr id) -- ^ Haskell Spliced Expression
+    = HsSplicedExpr (HsExpr id) -- ^ Haskell Spliced Expression TODO RGS: Update this
     | HsSplicedTy   (HsType id) -- ^ Haskell Spliced Type
     | HsSplicedPat  (Pat id)    -- ^ Haskell Spliced Pattern
 

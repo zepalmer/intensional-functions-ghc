@@ -649,7 +649,7 @@ tcNestedSplice pop_stage (TcPending ps_var lie_var q@(QuoteWrapper _ m_var)) spl
        --   (a) in case we print it in debug messages, and
        --   (b) because we test whether it is tagToEnum in Tc.Gen.Expr.tcApp
        ; return (HsSpliceE noAnn $
-                 HsSpliced noExtField (ThModFinalizers []) $
+                 HsSpliced noExtField (ThModFinalizers []) $ -- TODO RGS: What should we do about this use of HsSpliced?
                  HsSplicedExpr (unLoc expr'')) }
 
 

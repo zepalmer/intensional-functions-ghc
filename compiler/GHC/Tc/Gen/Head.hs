@@ -244,8 +244,8 @@ addArgWrap wrap args
  | otherwise          = EWrap (EHsWrap wrap) : args
 
 splitHsApps :: HsExpr GhcRn
-            -> ( (HsExpr GhcRn, AppCtxt)  -- Head
-               , [HsExprArg 'TcpRn])      -- Args
+            -> TcM ( (HsExpr GhcRn, AppCtxt)  -- Head
+                   , [HsExprArg 'TcpRn])      -- Args
 -- See Note [splitHsApps]
 splitHsApps e = go e (top_ctxt 0 e) []
   where
@@ -253,31 +253,41 @@ splitHsApps e = go e (top_ctxt 0 e) []
     top_ctxt n (HsPragE _ _ fun)           = top_lctxt n fun
     top_ctxt n (HsAppType _ fun _)         = top_lctxt (n+1) fun
     top_ctxt n (HsApp _ fun _)             = top_lctxt (n+1) fun
-    top_ctxt n (XExpr (HsExpanded orig _)) = VACall orig      n noSrcSpan
+    top_ctxt n (XExpr x) = case x of
+      ExpansionRn (HsExpanded orig _)     -> VACall orig      n noSrcSpan
+      AddModFinalizers _ fun              -> VACall fun       n noSrcSpan
     top_ctxt n other_fun                   = VACall other_fun n noSrcSpan
 
     top_lctxt n (L _ fun) = top_ctxt n fun
 
     go :: HsExpr GhcRn -> AppCtxt -> [HsExprArg 'TcpRn]
-       -> ((HsExpr GhcRn, AppCtxt), [HsExprArg 'TcpRn])
+       -> TcM ((HsExpr GhcRn, AppCtxt), [HsExprArg 'TcpRn])
     go (HsPar _ _ (L l fun) _)    ctxt args = go fun (set l ctxt) (EWrap (EPar ctxt)   : args)
     go (HsPragE _ p (L l fun))    ctxt args = go fun (set l ctxt) (EPrag      ctxt p   : args)
     go (HsAppType _ (L l fun) ty) ctxt args = go fun (dec l ctxt) (mkETypeArg ctxt ty  : args)
     go (HsApp _ (L l fun) arg)    ctxt args = go fun (dec l ctxt) (mkEValArg  ctxt arg : args)
 
     -- See Note [Looking through HsExpanded]
-    go (XExpr (HsExpanded orig fun)) ctxt args
-      = go fun (VAExpansion orig (appCtxtLoc ctxt)) (EWrap (EExpand orig) : args)
+    go (XExpr x) ctxt args
+      = case x of
+          ExpansionRn (HsExpanded orig fun)
+            -> go fun (VAExpansion orig (appCtxtLoc ctxt)) (EWrap (EExpand orig) : args)
+          AddModFinalizers mod_finalizers fun
+            -> do addModFinalizersWithLclEnv mod_finalizers
+                  let orig = HsSpliceE noAnn $
+                             HsSpliced noExtField mod_finalizers $
+                             HsSplicedExpr fun
+                  go fun (VAExpansion orig (appCtxtLoc ctxt)) (EWrap (EExpand orig) : args)
 
     -- See Note [Desugar OpApp in the typechecker]
     go e@(OpApp _ arg1 (L l op) arg2) _ args
-      = ( (op, VACall op 0 (locA l))
-        ,   mkEValArg (VACall op 1 generatedSrcSpan) arg1
-          : mkEValArg (VACall op 2 generatedSrcSpan) arg2
-          : EWrap (EExpand e)
-          : args )
+      = pure ( (op, VACall op 0 (locA l))
+             ,   mkEValArg (VACall op 1 generatedSrcSpan) arg1
+               : mkEValArg (VACall op 2 generatedSrcSpan) arg2
+               : EWrap (EExpand e)
+               : args )
 
-    go e ctxt args = ((e,ctxt), args)
+    go e ctxt args = pure ((e,ctxt), args)
 
     set :: SrcSpanAnnA -> AppCtxt -> AppCtxt
     set l (VACall f n _)        = VACall f n (locA l)
@@ -391,6 +401,7 @@ where
 
 Note [Looking through HsExpanded]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+TODO RGS: Update me
 When creating an application chain in splitHsApps, we must deal with
      HsExpanded f1 (f `HsApp` e1) `HsApp` e2 `HsApp` e3
 
@@ -450,8 +461,6 @@ tcInferAppHead_maybe fun args
       ExprWithTySig _ e hs_ty   -> add_head_ctxt fun args $
                                    Just <$> tcExprWithSig e hs_ty
       HsOverLit _ lit           -> Just <$> tcInferOverLit lit
-      HsSpliceE _ (HsSpliced _ _ (HsSplicedExpr e))
-                                -> tcInferAppHead_maybe e args
       _                         -> return Nothing
 
 add_head_ctxt :: HsExpr GhcRn -> [HsExprArg 'TcpRn] -> TcM a -> TcM a

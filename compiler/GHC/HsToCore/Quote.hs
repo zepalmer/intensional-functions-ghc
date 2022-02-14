@@ -1630,11 +1630,15 @@ repE (HsGetField _ e (L _ (DotFieldOcc _ (L _ f)))) = do
   e1 <- repLE e
   repGetField e1 f
 repE (HsProjection _ xs) = repProjection (fmap (unLoc . dfoLabel . unLoc) xs)
-repE (XExpr (HsExpanded orig_expr ds_expr))
-  = do { rebindable_on <- lift $ xoptM LangExt.RebindableSyntax
-       ; if rebindable_on  -- See Note [Quotation and rebindable syntax]
-         then repE ds_expr
-         else repE orig_expr }
+repE (XExpr x) =
+  case x of
+     ExpansionRn (HsExpanded orig_expr ds_expr) ->
+       do { rebindable_on <- lift $ xoptM LangExt.RebindableSyntax
+          ; if rebindable_on  -- See Note [Quotation and rebindable syntax]
+            then repE ds_expr
+            else repE orig_expr }
+     AddModFinalizers{} ->
+       pprPanic "repE XExpr" (ppr x) -- TODO RGS: Is this right?
 repE e@(HsPragE _ (HsPragSCC {}) _) = notHandled (ThCostCentres e)
 repE e@(HsBracket{}) = notHandled (ThExpressionForm e)
 repE e@(HsRnBracketOut{}) = notHandled (ThExpressionForm e)

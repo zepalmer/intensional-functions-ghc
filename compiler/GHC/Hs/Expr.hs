@@ -416,10 +416,17 @@ tupArgPresent (Missing {}) = False
 ********************************************************************* -}
 
 type instance XXExpr GhcPs = DataConCantHappen
-type instance XXExpr GhcRn = HsExpansion (HsExpr GhcRn) (HsExpr GhcRn)
+type instance XXExpr GhcRn = XXExprGhcRn
 type instance XXExpr GhcTc = XXExprGhcTc
 -- HsExpansion: see Note [Rebindable syntax and HsExpansion] below
 
+-- | TODO RGS: Docs
+data XXExprGhcRn
+  = ExpansionRn
+      (HsExpansion (HsExpr GhcRn) (HsExpr GhcRn))
+  | AddModFinalizers
+      ThModFinalizers
+      (HsExpr GhcRn)
 
 data XXExprGhcTc
   = WrapExpr        -- Type and evidence application and abstractions
@@ -660,13 +667,20 @@ ppr_expr (XExpr x) = case ghcPass @p of
   GhcRn -> ppr x
   GhcTc -> ppr x
 
+instance Outputable XXExprGhcRn where
+  ppr (ExpansionRn e)
+    = ppr e -- e is an HsExpansion, we print the original
+            -- expression, not the desugared one
+  ppr (AddModFinalizers _ e)
+    = ppr e
+
 instance Outputable XXExprGhcTc where
   ppr (WrapExpr (HsWrap co_fn e))
     = pprHsWrapper co_fn (\_parens -> pprExpr e)
 
   ppr (ExpansionExpr e)
     = ppr e -- e is an HsExpansion, we print the original
-            -- expression (LHsExpr GhcPs), not the
+            -- expression (LHsExpr GhcRn), not the
             -- desugared one (LHsExpr GhcTc).
 
   ppr (ConLikeTc con _ _) = pprPrefixOcc con
@@ -698,8 +712,9 @@ ppr_infix_expr (XExpr x)            = case ghcPass @p of
                                         GhcTc -> ppr_infix_expr_tc x
 ppr_infix_expr _ = Nothing
 
-ppr_infix_expr_rn :: HsExpansion (HsExpr GhcRn) (HsExpr GhcRn) -> Maybe SDoc
-ppr_infix_expr_rn (HsExpanded a _) = ppr_infix_expr a
+ppr_infix_expr_rn :: XXExprGhcRn -> Maybe SDoc
+ppr_infix_expr_rn (ExpansionRn (HsExpanded a _)) = ppr_infix_expr a
+ppr_infix_expr_rn (AddModFinalizers _ e)         = ppr_infix_expr e
 
 ppr_infix_expr_tc :: XXExprGhcTc -> Maybe SDoc
 ppr_infix_expr_tc (WrapExpr (HsWrap _ e))          = ppr_infix_expr e
@@ -808,8 +823,9 @@ hsExprNeedsParens prec = go
     go_x_tc (HsTick _ (L _ e))               = hsExprNeedsParens prec e
     go_x_tc (HsBinTick _ _ (L _ e))          = hsExprNeedsParens prec e
 
-    go_x_rn :: HsExpansion (HsExpr GhcRn) (HsExpr GhcRn) -> Bool
-    go_x_rn (HsExpanded a _) = hsExprNeedsParens prec a
+    go_x_rn :: XXExprGhcRn -> Bool
+    go_x_rn (ExpansionRn (HsExpanded a _)) = hsExprNeedsParens prec a
+    go_x_rn (AddModFinalizers _ e)         = hsExprNeedsParens prec e
 
 
 -- | Parenthesize an expression without token information
@@ -850,7 +866,8 @@ isAtomicHsExpr (XExpr x)
     go_x_tc (HsTick {}) = False
     go_x_tc (HsBinTick {}) = False
 
-    go_x_rn (HsExpanded a _) = isAtomicHsExpr a
+    go_x_rn (ExpansionRn (HsExpanded a _)) = isAtomicHsExpr a
+    go_x_rn (AddModFinalizers _ e)         = isAtomicHsExpr e
 
 isAtomicHsExpr _ = False
 
