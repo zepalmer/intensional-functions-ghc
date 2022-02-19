@@ -1638,7 +1638,10 @@ repE (XExpr x) =
             then repE ds_expr
             else repE orig_expr }
      AddModFinalizers{} ->
-       pprPanic "repE XExpr" (ppr x) -- TODO RGS: Is this right?
+       -- TODO RGS: Is this right? I believe so, since there is an invariant
+       -- that no AddModFinalizers should appear inside an HsBracket. Spell
+       -- this out explicitly somewhere.
+       pprPanic "repE XExpr" (ppr x)
 repE e@(HsPragE _ (HsPragSCC {}) _) = notHandled (ThCostCentres e)
 repE e@(HsBracket{}) = notHandled (ThExpressionForm e)
 repE e@(HsRnBracketOut{}) = notHandled (ThExpressionForm e)
