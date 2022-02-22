@@ -205,6 +205,11 @@ data AppCtxt
        (HsExpr GhcRn) Int  -- In the third argument of function f
        SrcSpan             -- The SrcSpan of the application (f e1 e2 e3)
 
+-- | Determine if an 'HsExprArg' is an 'EWrap'.
+isEWrap :: HsExprArg p -> Bool
+isEWrap EWrap{} = True
+isEWrap _       = False
+
 appCtxtLoc :: AppCtxt -> SrcSpan
 appCtxtLoc (VAExpansion _ l) = l
 appCtxtLoc (VACall _ _ l)    = l
@@ -464,10 +469,10 @@ tcInferAppHead_maybe fun args
       _                         -> return Nothing
 
 add_head_ctxt :: HsExpr GhcRn -> [HsExprArg 'TcpRn] -> TcM a -> TcM a
--- Don't push an expression context if the arguments are empty,
+-- Don't push an expression context if the arguments are all EWraps,
 -- because it has already been pushed by tcExpr
 add_head_ctxt fun args thing_inside
-  | null args = thing_inside
+  | all isEWrap args = thing_inside
   | otherwise = addExprCtxt fun thing_inside
 
 
