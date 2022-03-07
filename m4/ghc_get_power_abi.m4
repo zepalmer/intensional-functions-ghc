@@ -1,6 +1,6 @@
-# GET_ARM_ISA
+# GHC_GET_POWER_ABI
 # ----------------------------------
-# Get info about the ISA on the ARM arch
+# Get version of the PowerPC ABI
 AC_DEFUN([GHC_GET_POWER_ABI],
 [
     AC_COMPILE_IFELSE([
