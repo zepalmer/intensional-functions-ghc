@@ -392,6 +392,8 @@ type family XIPVar          x
 type family XOverLitE       x
 type family XLitE           x
 type family XLam            x
+type family XItsCurLam      x
+type family XItsUncLam      x
 type family XLamCase        x
 type family XApp            x
 type family XAppTypeE       x
@@ -407,6 +409,7 @@ type family XIf             x
 type family XMultiIf        x
 type family XLet            x
 type family XDo             x
+type family XItsDo          x
 type family XExplicitList   x
 type family XRecordCon      x
 type family XRecordUpd      x
@@ -621,6 +624,8 @@ type family XTyVar           x
 type family XAppTy           x
 type family XAppKindTy       x
 type family XFunTy           x
+type family XItsCurFunTy     x
+type family XItsUncFunTy     x
 type family XListTy          x
 type family XTupleTy         x
 type family XSumTy           x

@@ -769,6 +769,24 @@ data HsType pass
 
       -- For details on above see note [exact print annotations] in GHC.Parser.Annotation
 
+  | HsItsCurFunTy       !(XItsCurFunTy pass)
+                        (HsArrow pass)
+                        (LHsType pass)   -- constraint function (of kind Constraint -> Type)
+                        (LHsType pass)   -- input type (of kind Type)
+                        (LHsType pass)   -- output type (of kind Type)
+      -- ^ - 'GHC.Parser.Annotation.AnnKeywordId' : 'GHC.Parser.Annotation.AnnRarrowpct',
+
+      -- For details on above see note [exact print annotations] in GHC.Parser.Annotation
+
+  | HsItsUncFunTy       !(XItsUncFunTy pass)
+                        (HsArrow pass)
+                        (LHsType pass)   -- constraint function (of kind Constraint -> Type)
+                        (LHsType pass)   -- input types (of kind NonEmptyList Type)
+                        (LHsType pass)   -- output type (of kind Type)
+      -- ^ - 'GHC.Parser.Annotation.AnnKeywordId' : 'GHC.Parser.Annotation.AnnRarrowpctpct',
+
+      -- For details on above see note [exact print annotations] in GHC.Parser.Annotation
+
   | HsListTy            (XListTy pass)
                         (LHsType pass)  -- Element type
       -- ^ - 'GHC.Parser.Annotation.AnnKeywordId' : 'GHC.Parser.Annotation.AnnOpen' @'['@,

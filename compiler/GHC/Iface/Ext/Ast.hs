@@ -1100,6 +1100,12 @@ instance HiePass p => ToHie (LocatedA (HsExpr (GhcPass p))) where
       HsLam _ mg ->
         [ toHie mg
         ]
+      HsItsCurLam  _ mg ->
+        [ toHie mg
+        ]
+      HsItsUncLam  _ mg ->
+        [ toHie mg
+        ]
       HsLamCase _ mg ->
         [ toHie mg
         ]
@@ -1153,6 +1159,10 @@ instance HiePass p => ToHie (LocatedA (HsExpr (GhcPass p))) where
         , toHie expr
         ]
       HsDo _ _ (L ispan stmts) ->
+        [ locOnly (locA ispan)
+        , toHie $ listScopes NoScope stmts
+        ]
+      HsItsDo _ _ (L ispan stmts) ->
         [ locOnly (locA ispan)
         , toHie $ listScopes NoScope stmts
         ]

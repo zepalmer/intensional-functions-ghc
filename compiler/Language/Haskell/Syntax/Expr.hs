@@ -316,6 +316,40 @@ data HsExpr p
 
        -- For details on above see note [exact print annotations] in GHC.Parser.Annotation
 
+  | HsItsCurLam !(XItsCurLam p)
+                (MatchGroup p (LHsExpr p))
+       -- ^ Curried intensional function.  Always contains a single match.
+       --
+       --   Expressions of this form are syntactic sugar for the currying of a
+       --   corresponding uncurried intensional function.  That is: the syntax
+       --       \%Eq x y -> ...
+       --   is sugar for
+       --       itsCurry (\%%Eq x y -> ...)
+       --   This desugaring occurs during the renaming phase.
+       --
+       --   ITSTODO: consider additional documentation and verify the above.
+       --
+       -- - 'GHC.Parser.Annotation.AnnKeywordId' : 'GHC.Parser.Annotation.AnnLam',
+       --       'GHC.Parser.Annotation.AnnRarrow',
+
+       -- For details on above see note [Api annotations] in GHC.Parser.Annotation
+
+  | HsItsUncLam !(XItsUncLam p)
+                (MatchGroup p (LHsExpr p))
+       -- ^ Uncurried intensional function.  Always contains a single match.
+       --
+       --   After renaming, the extension point contains a FreeVars describing
+       --   the free variables in this expression.  These variables are used in
+       --   constructing the closure of the intensional function when it is
+       --   desugared.
+       --
+       --   ITSTODO: consider additional documentation here.
+       --
+       -- - 'GHC.Parser.Annotation.AnnKeywordId' : 'GHC.Parser.Annotation.AnnLam',
+       --       'GHC.Parser.Annotation.AnnRarrow',
+
+       -- For details on above see note [Api annotations] in GHC.Parser.Annotation
+
   | HsLamCase (XLamCase p) (MatchGroup p (LHsExpr p)) -- ^ Lambda-case
        --
        -- - 'GHC.Parser.Annotation.AnnKeywordId' : 'GHC.Parser.Annotation.AnnLam',
@@ -447,6 +481,17 @@ data HsExpr p
                 -- because in this context we never use
                 -- the PatGuard or ParStmt variant
                 (XRec p [ExprLStmt p])   -- "do":one or more stmts
+
+  -- | - 'GHC.Parser.Annotation.AnnKeywordId' : 'GHC.Parser.Annotation.AnnIDo',
+  --             'GHC.Parser.Annotation.AnnOpen', 'GHC.Parser.Annotation.AnnSemi',
+  --             'GHC.Parser.Annotation.AnnVbar',
+  --             'GHC.Parser.Annotation.AnnClose'
+  -- Intensional do expression.  Separated from other "do" expressions because
+  -- it is desugared during renaming and HsStmtContext is used at GhcRn
+  -- everywhere connected to HsDo.
+  | HsItsDo     !(XItsDo p)
+                (LHsType p)
+                (XRec p [ExprLStmt p])
 
   -- | Syntactic list: [a,b,c,...]
   --
@@ -1638,6 +1683,12 @@ data HsMatchContext p
                                 -- ^A pattern matching on an argument of a
                                 -- function binding
   | LambdaExpr                  -- ^Patterns of a lambda
+  | ItsCurLambdaExpr (LHsType p)
+                                -- ^Patterns of a curried intensional lambda;
+                                --  the type here is the constraint function.
+  | ItsUncLambdaExpr (LHsType p)
+                                -- ^Patterns of an uncurried intensional lambda;
+                                --  the type here is the constraint function.
   | CaseAlt                     -- ^Patterns and guards on a case alternative
   | IfAlt                       -- ^Guards of a multi-way if alternative
   | ArrowMatchCtxt              -- ^A pattern match inside arrow notation
@@ -1717,6 +1768,8 @@ matchSeparator (FunRhs {})   = text "="
 matchSeparator CaseAlt       = text "->"
 matchSeparator IfAlt         = text "->"
 matchSeparator LambdaExpr    = text "->"
+matchSeparator (ItsCurLambdaExpr _) = text "->" -- the "->" in "\%c ... -> ..."
+matchSeparator (ItsUncLambdaExpr _) = text "->" -- the "->" in "\%%c ... -> ..."
 matchSeparator (ArrowMatchCtxt{})= text "->"
 matchSeparator PatBindRhs    = text "="
 matchSeparator PatBindGuards = text "="
@@ -1751,6 +1804,8 @@ pprMatchContextNoun ThPatQuote      = text "Template Haskell pattern quotation"
 pprMatchContextNoun PatBindRhs      = text "pattern binding"
 pprMatchContextNoun PatBindGuards   = text "pattern binding guards"
 pprMatchContextNoun LambdaExpr      = text "lambda abstraction"
+pprMatchContextNoun (ItsCurLambdaExpr _) = text "curried intensional lambda abstraction"
+pprMatchContextNoun (ItsUncLambdaExpr _) = text "uncurried intensional lambda abstraction"
 pprMatchContextNoun (ArrowMatchCtxt c)= pprArrowMatchContextNoun c
 pprMatchContextNoun (StmtCtxt ctxt) = text "pattern binding in"
                                       $$ pprAStmtContext ctxt

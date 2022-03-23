@@ -1431,6 +1431,12 @@ class (b ~ (Body b) GhcPs, AnnoBody b) => DisambECP b where
   -- | Disambiguate "\... -> ..." (lambda)
   mkHsLamPV
     :: SrcSpan -> (EpAnnComments -> MatchGroup GhcPs (LocatedA b)) -> PV (LocatedA b)
+  -- | Disambiguate "\%... -> ..." (Curried intensional lambda)
+  mkHsItsCurLamPV
+    :: SrcSpan -> (EpAnnComments -> MatchGroup GhcPs (LocatedA b)) -> PV (LocatedA b)
+  -- | Disambiguate "\%%... -> ..." (Uncurried intensional lambda)
+  mkHsItsUncLamPV
+    :: SrcSpan -> (EpAnnComments -> MatchGroup GhcPs (LocatedA b)) -> PV (LocatedA b)
   -- | Disambiguate "let ... in ..."
   mkHsLetPV
     :: SrcSpan -> HsLocalBinds GhcPs -> LocatedA b -> AnnsLet -> PV (LocatedA b)
@@ -1471,6 +1477,12 @@ class (b ~ (Body b) GhcPs, AnnoBody b) => DisambECP b where
   mkHsDoPV ::
     SrcSpan ->
     Maybe ModuleName ->
+    LocatedL [LStmt GhcPs (LocatedA b)] ->
+    AnnList ->
+    PV (LocatedA b)
+  mkHsItsDoPV ::
+    SrcSpan ->
+    LHsType GhcPs ->
     LocatedL [LStmt GhcPs (LocatedA b)] ->
     AnnList ->
     PV (LocatedA b)
@@ -1573,6 +1585,8 @@ instance DisambECP (HsCmd GhcPs) where
   mkHsLamPV l mg = do
     cs <- getCommentsFor l
     return $ L (noAnnSrcSpan l) (HsCmdLam NoExtField (mg cs))
+  mkHsItsCurLamPV _l _mg = itsPanic "ITSTODO: mkHsItsCurLamPV for DisambECP in HsCmd"
+  mkHsItsUncLamPV _l _mg = itsPanic "ITSTODO: mkHsItsUncLamPV for DisambECP in HsCmd"
   mkHsLetPV l bs e anns = do
     cs <- getCommentsFor l
     return $ L (noAnnSrcSpan l) (HsCmdLet (EpAnn (spanAsAnchor l) anns cs) bs e)
@@ -1606,6 +1620,8 @@ instance DisambECP (HsCmd GhcPs) where
     cs <- getCommentsFor l
     return $ L (noAnnSrcSpan l) (HsCmdDo (EpAnn (spanAsAnchor l) anns cs) stmts)
   mkHsDoPV l (Just m)    _ _ = addFatalError $ PsError (PsErrQualifiedDoInCmd m) [] l
+  mkHsItsDoPV _l _cfn _stmts _anns = do
+    itsPanic "intensional do used in command context"
   mkHsParPV l c ann = do
     cs <- getCommentsFor l
     return $ L (noAnnSrcSpan l) (HsCmdPar (EpAnn (spanAsAnchor l) ann cs) c)
@@ -1653,6 +1669,12 @@ instance DisambECP (HsExpr GhcPs) where
   mkHsLamPV l mg = do
     cs <- getCommentsFor l
     return $ L (noAnnSrcSpan l) (HsLam NoExtField (mg cs))
+  mkHsItsCurLamPV l mg = do
+    cs <- getCommentsFor l
+    return $ L (noAnnSrcSpan l) (HsItsCurLam NoExtField (mg cs))
+  mkHsItsUncLamPV l mg = do
+    cs <- getCommentsFor l
+    return $ L (noAnnSrcSpan l) (HsItsUncLam 0 (mg cs))
   mkHsLetPV l bs c anns = do
     cs <- getCommentsFor l
     return $ L (noAnnSrcSpan l) (HsLet (EpAnn (spanAsAnchor l) anns cs) bs c)
@@ -1686,6 +1708,9 @@ instance DisambECP (HsExpr GhcPs) where
   mkHsDoPV l mod stmts anns = do
     cs <- getCommentsFor l
     return $ L (noAnnSrcSpan l) (HsDo (EpAnn (spanAsAnchor l) anns cs) (DoExpr mod) stmts)
+  mkHsItsDoPV l cfn stmts anns = do
+    cs <- getCommentsFor l
+    return $ L (noAnnSrcSpan l) (HsItsDo (EpAnn (spanAsAnchor l) anns cs) cfn stmts)
   mkHsParPV l e ann = do
     cs <- getCommentsFor l
     return $ L (noAnnSrcSpan l) (HsPar (EpAnn (spanAsAnchor l) ann cs) e)
@@ -1744,6 +1769,8 @@ instance DisambECP (PatBuilder GhcPs) where
   ecpFromCmd' (L l c)    = addFatalError $ PsError (PsErrArrowCmdInPat c) [] (locA l)
   ecpFromExp' (L l e)    = addFatalError $ PsError (PsErrArrowExprInPat e) [] (locA l)
   mkHsLamPV l _          = addFatalError $ PsError PsErrLambdaInPat [] l
+  mkHsItsCurLamPV l _mg  = addFatalError $ PsError PsErrItsLambdaInPat [] l
+  mkHsItsUncLamPV l _mg  = addFatalError $ PsError PsErrItsLambdaInPat [] l
   mkHsLetPV l _ _ _      = addFatalError $ PsError PsErrLetInPat [] l
   mkHsProjUpdatePV l _ _ _ _ = addFatalError $ PsError PsErrOverloadedRecordDotInvalid [] l
   type InfixOp (PatBuilder GhcPs) = RdrName
@@ -1763,6 +1790,7 @@ instance DisambECP (PatBuilder GhcPs) where
     return $ L l (PatBuilderAppType p (mkHsPatSigType anns t))
   mkHsIfPV l _ _ _ _ _ _ = addFatalError $ PsError PsErrIfTheElseInPat [] l
   mkHsDoPV l _ _ _       = addFatalError $ PsError PsErrDoNotationInPat [] l
+  mkHsItsDoPV l _ _ _    = addFatalError $ PsError PsErrItsDoNotationInPat [] l
   mkHsParPV l p an       = return $ L (noAnnSrcSpan l) (PatBuilderPar p an)
   mkHsVarPV v@(getLoc -> l) = return $ L (na2la l) (PatBuilderVar v)
   mkHsLitPV lit@(L l a) = do

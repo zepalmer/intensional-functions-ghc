@@ -238,11 +238,16 @@ data AnnKeywordId
     | AnnGroup
     | AnnHeader -- ^ for CType
     | AnnHiding
+    | AnnIdo -- for intensional do
     | AnnIf
     | AnnImport
     | AnnIn
     | AnnInfix -- ^ 'infix' or 'infixl' or 'infixr'
     | AnnInstance
+    | AnnIntensional
+    | AnnItsCurLam
+    | AnnItsDo
+    | AnnItsUncLam
     | AnnLam
     | AnnLarrow     -- ^ '<-'
     | AnnLarrowU    -- ^ '<-', unicode variant
@@ -276,6 +281,8 @@ data AnnKeywordId
     | AnnProc
     | AnnQualified
     | AnnRarrow -- ^ '->'
+    | AnnRarrowpct -- ^ '->%'
+    | AnnRarrowpctpct -- ^ '->%%'
     | AnnRarrowU -- ^ '->', unicode variant
     | AnnRec
     | AnnRole
@@ -741,6 +748,16 @@ data NameAnn
       }
   -- | Used for @->@, as an identifier
   | NameAnnRArrow {
+      nann_name      :: EpaLocation,
+      nann_trailing  :: [TrailingAnn]
+      }
+  -- | Used for @->%@, as an identifier
+  | NameAnnRArrowpct {
+      nann_name      :: EpaLocation,
+      nann_trailing  :: [TrailingAnn]
+      }
+  -- | Used for @->%%@, as an identifier
+  | NameAnnRArrowpctpct {
       nann_name      :: EpaLocation,
       nann_trailing  :: [TrailingAnn]
       }
@@ -1264,6 +1281,10 @@ instance Outputable NameAnn where
     = text "NameAnnOnly" <+> ppr a <+> ppr o <+> ppr c <+> ppr t
   ppr (NameAnnRArrow n t)
     = text "NameAnnRArrow" <+> ppr n <+> ppr t
+  ppr (NameAnnRArrowpct n t)
+    = text "NameAnnRArrowpct" <+> ppr n <+> ppr t
+  ppr (NameAnnRArrowpctpct n t)
+    = text "NameAnnRArrowpctpct" <+> ppr n <+> ppr t
   ppr (NameAnnQuote q n t)
     = text "NameAnnQuote" <+> ppr q <+> ppr n <+> ppr t
   ppr (NameAnnTrailing t)

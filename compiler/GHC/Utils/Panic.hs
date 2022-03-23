@@ -33,6 +33,8 @@ module GHC.Utils.Panic
    , cmdLineErrorIO
    , callStackDoc
 
+   , itsPanic
+
    , Exception.Exception(..)
    , showException
    , safeShowException

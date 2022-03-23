@@ -385,6 +385,15 @@ data PsErrorDesc
       --
       -- TODO: distinguish errors without using SDoc
 
+   | PsErrIntensionalFunctions
+      -- ^ Intensional functions used but IntensionalFunctions not enabled
+
+   | PsErrItsDoNotationInPat
+      -- ^ Intensional do-notation in pattern
+
+   | PsErrItsLambdaInPat
+      -- ^ Intensional lambda in pattern
+
 
 newtype StarIsType = StarIsType Bool
 

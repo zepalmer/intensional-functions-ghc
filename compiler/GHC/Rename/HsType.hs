@@ -51,6 +51,7 @@ import GHC.Rename.Env
 import GHC.Rename.Utils  ( HsDocContext(..), inHsDocContext, withHsDocContext
                          , mapFvRn, pprHsDocContext, bindLocalNamesFV
                          , typeAppErr, newLocalBndrRn, checkDupRdrNamesN
+                         , wrapGenSpan
                          , checkShadowedRdrNames )
 import GHC.Rename.Fixity ( lookupFieldFixityRn, lookupFixityRn
                          , lookupTyFixityRn )
@@ -66,7 +67,7 @@ import GHC.Types.FieldLabel
 import GHC.Utils.Misc
 import GHC.Types.Fixity ( compareFixity, negateFixity
                         , Fixity(..), FixityDirection(..), LexicalFixity(..) )
-import GHC.Types.Basic  ( TypeOrKind(..) )
+import GHC.Types.Basic  ( TypeOrKind(..), PromotionFlag (NotPromoted, IsPromoted) )
 import GHC.Utils.Outputable
 import GHC.Utils.Panic
 import GHC.Data.FastString
@@ -665,6 +666,46 @@ rnHsTyKi env (HsFunTy u mult ty1 ty2)
        ; return (HsFunTy u mult' ty1' ty2'
                 , plusFVs [fvs1, fvs2, w_fvs]) }
 
+rnHsTyKi env (HsItsCurFunTy NoExtField mult tyC ty1 ty2)
+  = do { {- τ₁ ->%τₖ τ₂ ≡ ('NonEmptySingletonList τ₁) ->%%τₖ τ₂
+                      ≡ IntensionalFunction τₖ ('NonEmptySingletonList τ₁) τ₂ -}
+         (tyC', fvsC) <- rnLHsTyKi env tyC
+       ; (ty1', fvs1) <- rnLHsTyKi env ty1
+       ; (ty2', fvs2) <- rnLHsTyKi env ty2
+       ; (mult', w_fvs) <- rnHsArrow env mult
+       ; let tyIn =
+              mkHsAppTy
+                ( wrapGenSpan $ HsTyVar EpAnnNotUsed IsPromoted $
+                    wrapGenSpan $
+                      intensionalFunctionsNonEmptyListSingletonDataConName
+                )
+                ty1'
+       ; mkRnHsIntensionalFunctionType
+          mult' [tyC', tyIn, ty2'] [fvsC, fvs1, fvs2, w_fvs]
+       }
+
+rnHsTyKi env (HsItsUncFunTy NoExtField mult tyC ty1 ty2)
+  = do { {- '[τ₁,...,τₙ] ->%%τₖ τ' ≡
+              IntensionalFunction
+                τₖ
+                (IntensionalFunctionSyntacticInput '[τ₁,...,τₙ])
+                τ'
+         -}
+         (tyC', fvsC) <- rnLHsTyKi env tyC
+       ; (ty1', fvs1) <- rnLHsTyKi env ty1
+       ; (ty2', fvs2) <- rnLHsTyKi env ty2
+       ; (mult', w_fvs) <- rnHsArrow env mult
+       ; let tyIn =
+              mkHsAppTy
+                ( wrapGenSpan $ HsTyVar EpAnnNotUsed IsPromoted $
+                    wrapGenSpan $
+                      intensionalFunctionSyntacticInputName
+                )
+                ty1'
+       ; mkRnHsIntensionalFunctionType
+          mult' [tyC', tyIn, ty2'] [fvsC, fvs1, fvs2, w_fvs]
+       }
+
 rnHsTyKi env listTy@(HsListTy x ty)
   = do { data_kinds <- xoptM LangExt.DataKinds
        ; when (not data_kinds && isRnKindLevel env)
@@ -764,6 +805,27 @@ rnHsTyKi env ty@(HsExplicitTupleTy _ tys)
 rnHsTyKi env (HsWildCardTy _)
   = do { checkAnonWildCard env
        ; return (HsWildCardTy noExtField, emptyFVs) }
+
+mkRnHsIntensionalFunctionType :: HsArrow GhcRn -> [LHsType GhcRn] -> [FreeVars]
+                              -> RnM (HsType GhcRn, FreeVars)
+mkRnHsIntensionalFunctionType mult' tys fvss
+  = do { -- Multiplicity should always be unrestricted
+         () <- case mult' of
+                HsUnrestrictedArrow _ -> return ()
+                HsLinearArrow _ _ ->
+                  itsPanic "linear arrow in intensional function in rnHsTyKi"
+                HsExplicitMult _ _ _ ->
+                  itsPanic "explicit multiplicity arrow in intensional function in rnHsTyKi"
+       ; let retType =
+              unLoc $ mkHsAppTys
+                ( wrapGenSpan $ HsTyVar EpAnnNotUsed NotPromoted $
+                    wrapGenSpan $
+                      intensionalFunctionTyConName
+                )
+                tys
+         in
+         return (retType, plusFVs fvss)
+       }
 
 rnHsArrow :: RnTyKiEnv -> HsArrow GhcPs -> RnM (HsArrow GhcRn, FreeVars)
 rnHsArrow _env (HsUnrestrictedArrow u) = return (HsUnrestrictedArrow u, emptyFVs)
@@ -1945,6 +2007,14 @@ extract_lty (L _ ty) acc
       HsFunTy _ w ty1 ty2         -> extract_lty ty1 $
                                      extract_lty ty2 $
                                      extract_hs_arrow w acc
+      HsItsCurFunTy _ w tyC ty1 ty2 -> extract_lty tyC $
+                                       extract_lty ty1 $
+                                       extract_lty ty2 $
+                                       extract_hs_arrow w acc
+      HsItsUncFunTy _ w tyC ty1 ty2 -> extract_lty tyC $
+                                       extract_lty ty1 $
+                                       extract_lty ty2 $
+                                       extract_hs_arrow w acc
       HsIParamTy _ _ ty           -> extract_lty ty acc
       HsOpTy _ ty1 tv ty2         -> extract_tv tv $
                                      extract_lty ty1 $

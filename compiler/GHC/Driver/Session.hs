@@ -3575,6 +3575,7 @@ xFlagsDeps = [
   flagSpec "TypeFamilyDependencies"           LangExt.TypeFamilyDependencies,
   flagSpec "InstanceSigs"                     LangExt.InstanceSigs,
   flagSpec "ApplicativeDo"                    LangExt.ApplicativeDo,
+  flagSpec "IntensionalFunctions"             LangExt.IntensionalFunctions,
   flagSpec "InterruptibleFFI"                 LangExt.InterruptibleFFI,
   flagSpec "JavaScriptFFI"                    LangExt.JavaScriptFFI,
   flagSpec "KindSignatures"                   LangExt.KindSignatures,
@@ -3819,6 +3820,17 @@ impliedXFlags
     -- The extensions needed to declare an H98 unlifted data type
     , (LangExt.UnliftedDatatypes, turnOn, LangExt.DataKinds)
     , (LangExt.UnliftedDatatypes, turnOn, LangExt.StandaloneKindSignatures)
+
+    -- The extensions needed to support intensional functions
+    , (LangExt.IntensionalFunctions, turnOn, LangExt.ConstraintKinds)
+    , (LangExt.IntensionalFunctions, turnOn, LangExt.DataKinds)
+    , (LangExt.IntensionalFunctions, turnOn, LangExt.FlexibleContexts)
+    , (LangExt.IntensionalFunctions, turnOn, LangExt.FlexibleInstances)
+    , (LangExt.IntensionalFunctions, turnOn, LangExt.GADTs)
+    , (LangExt.IntensionalFunctions, turnOn, LangExt.KindSignatures)
+    , (LangExt.IntensionalFunctions, turnOn, LangExt.MultiParamTypeClasses)
+    , (LangExt.IntensionalFunctions, turnOn, LangExt.ScopedTypeVariables)
+    , (LangExt.IntensionalFunctions, turnOn, LangExt.TypeOperators)
   ]
 
 -- Note [When is StarIsType enabled]

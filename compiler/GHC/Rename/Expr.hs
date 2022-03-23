@@ -30,7 +30,7 @@ module GHC.Rename.Expr (
 import GHC.Prelude
 
 import GHC.Rename.Bind ( rnLocalBindsAndThen, rnLocalValBindsLHS, rnLocalValBindsRHS
-                        , rnMatchGroup, rnGRHS, makeMiniFixityEnv)
+                        , rnMatchGroup, rnMatch, rnGRHS, makeMiniFixityEnv)
 import GHC.Hs
 import GHC.Tc.Utils.Env ( isBrackStage )
 import GHC.Tc.Utils.Monad
@@ -40,7 +40,7 @@ import GHC.Rename.Fixity
 import GHC.Rename.Utils ( HsDocContext(..), bindLocalNamesFV, checkDupNames
                         , bindLocalNames
                         , mapMaybeFvRn, mapFvRn
-                        , warnUnusedLocalBinds, typeAppErr
+                        , warnUnusedLocalBinds, typeAppErr, wrapGenSpan
                         , checkUnusedRecordWildcard )
 import GHC.Rename.Unbound ( reportUnboundName )
 import GHC.Rename.Splice  ( rnBracket, rnSpliceExpr, checkThLocalName )
@@ -49,6 +49,7 @@ import GHC.Rename.Pat
 import GHC.Driver.Session
 import GHC.Builtin.Names
 
+import GHC.Types.Basic (Origin(..),Boxity(..))
 import GHC.Types.FieldLabel
 import GHC.Types.Fixity
 import GHC.Types.Id.Make
@@ -68,9 +69,12 @@ import Control.Monad
 import GHC.Builtin.Types ( nilDataConName )
 import qualified GHC.LanguageExtensions as LangExt
 
+import Data.Data (gmapT)
 import Data.List (unzip4, minimumBy)
 import Data.List.NonEmpty ( NonEmpty(..) )
-import Data.Maybe (isJust, isNothing)
+import qualified Data.Map as Map
+import Data.Maybe (isJust, isNothing, fromMaybe)
+import Data.Typeable
 import Control.Arrow (first)
 import Data.Ord
 import Data.Array
@@ -369,6 +373,249 @@ rnExpr (HsLam x matches)
   = do { (matches', fvMatch) <- rnMatchGroup LambdaExpr rnLExpr matches
        ; return (HsLam x matches', fvMatch) }
 
+rnExpr (HsItsUncLam genIndex matches)
+  = do { {-
+            This translation process is a bit exciting.  We have an intensional
+            function expression of the form
+
+              \%%τ₀ x₁ ... xₙ -> e
+
+            which we want to translate into an invocation of the
+            IntensionalFunction GADT.  There are a few caveats:
+
+              1. We must create a closure for the IntensionalFunction.  This
+                 should include all free value variables in the free variables
+                 of the function's body.  Because we want compilation to be
+                 deterministic, we will sort the names of free variables to
+                 produce a stable ordering.
+              2. We need to monomorphize all free variables captured in the
+                 closure.  If we did not, then a captured variable x : ∀α.τ may
+                 be instantiated differently in our encoded closure than it is
+                 by the underlying system.  (Indeed: the variable x may be used
+                 multiple places in the body of the function.  Since we're only
+                 representing each variable with a single value, we'll have to
+                 ensure that all uses are at the same type anyway.)  To ensure
+                 this monomorphization, we wrap the IntensionalFunction value in
+                 an n-ary η-conversion.  Since the function is not let-bound,
+                 its parameters are not assigned polymorphic types.
+
+            Given the above, our encoding takes the form
+
+              (\z₁ ... zₙ ->
+                IntensionalFunction
+                  (Label ...)
+                  [ClosureItem@τ₀ z₁, ..., ClosureItem@τ₀ zₙ]
+                  (\x₁ ... xₙ -> e)
+              ) z₁ ... zₙ
+
+            where xᵢ are the parameters to the function, zᵢ are the free
+            variables of the function, and τ₀ is the constraint function type.
+            Note that zᵢ excludes variables which have global names as their
+            values do not change over time (and those references are likely
+            baked into the function's generated code anyway).
+         -}
+       ; let (match, constraintFn) = unpackItsMatchGroup matches
+       ; (constraintFn', fvCFn) <- rnLHsType HsTypeCtx constraintFn
+       ; (match', fvMatch) <- rnMatch LambdaExpr rnLExpr match
+       ; let (ifnExpr, closureNames) =
+              mkIntensionalFunction constraintFn' match' fvMatch
+       ; wrapped <- monotypeWrap ifnExpr closureNames
+       ; return (unLoc wrapped, fvMatch `plusFV` fvCFn)
+       }
+  where
+    mkVar :: Name -> LHsExpr GhcRn
+    mkVar name = wrapGenSpan $ HsVar NoExtField $ wrapGenSpan name
+    mkInt :: Int -> LHsExpr GhcRn
+    mkInt n = wrapGenSpan $ HsLit noAnn $ HsInt NoExtField $ mkIntegralLit n
+    mkString :: FastString -> LHsExpr GhcRn
+    mkString fs = wrapGenSpan $ HsLit noAnn $ HsString NoSourceText fs
+    mkLambdaFromLMatch :: LMatch GhcRn (LHsExpr GhcRn) -> LHsExpr GhcRn
+    mkLambdaFromLMatch lmatch =
+      wrapGenSpan $ HsLam NoExtField $
+        MG { mg_ext = NoExtField
+           , mg_alts = wrapGenSpan $ [lmatch]
+           , mg_origin = Generated
+           }
+    mkLambdaFromPatsAndBody :: [LPat GhcRn] -> LHsExpr GhcRn -> LHsExpr GhcRn
+    mkLambdaFromPatsAndBody patterns body =
+      let match :: Match GhcRn (GenLocated SrcSpanAnnA (HsExpr GhcRn))
+          match =
+            Match { m_ext = noAnn
+                  , m_ctxt = LambdaExpr
+                  , m_pats = patterns
+                  , m_grhss =
+                      GRHSs
+                        { grhssExt = emptyComments
+                        , grhssGRHSs = [L generatedSrcSpan $ GRHS noAnn [] body]
+                        , grhssLocalBinds = EmptyLocalBinds NoExtField
+                        }
+                  }
+      in
+      mkLambdaFromLMatch $ wrapGenSpan match
+    mkLabelExprFromLocationAndIndex :: SrcSpan -> Int -> LHsExpr GhcRn
+    mkLabelExprFromLocationAndIndex loc idx =
+      case loc of
+        RealSrcSpan rss _ ->
+          mkCallExpr (mkVar intensionalFunctionsLabelDataConName)
+            [ mkString $ srcSpanFile rss
+            , mkInt $ srcSpanStartLine rss
+            , mkInt $ srcSpanStartCol rss
+            , mkInt $ srcSpanEndLine rss
+            , mkInt $ srcSpanEndCol rss
+            , mkInt idx
+            ]
+        UnhelpfulSpan _ ->
+          -- ITSTODO: I don't know... hash the AST or something?
+          itsPanic "intensional function label for unhelpful spans?"
+    mkClosureItem :: LHsType GhcRn -> LHsExpr GhcRn -> LHsExpr GhcRn
+    mkClosureItem cfnType arg =
+      wrapGenSpan $ HsApp EpAnnNotUsed
+        (wrapGenSpan $ HsAppType NoExtField
+          (wrapGenSpan $ HsVar NoExtField $
+            wrapGenSpan intensionalFunctionClosureItemName
+          )
+          (HsWC [] cfnType)
+        )
+        arg
+    mkClosure :: LHsType GhcRn -> [Name] -> LHsExpr GhcRn
+    mkClosure cfnType freeVarNames =
+      wrapGenSpan $ ExplicitList NoExtField $
+        map
+          (\name ->
+            let nameExpr :: LHsExpr GhcRn
+                nameExpr = wrapGenSpan $ HsVar NoExtField $ wrapGenSpan name
+            in
+            mkClosureItem cfnType nameExpr
+          )
+          freeVarNames
+    mkCallExpr :: LHsExpr GhcRn -> [LHsExpr GhcRn] -> LHsExpr GhcRn
+    mkCallExpr funExpr argExprs =
+      foldl'
+        (\expr arg -> wrapGenSpan $ HsApp noAnn expr arg)
+        funExpr argExprs
+    -- Creates an IntensionalFunction constructor call using the provided Match
+    -- and its corresponding free variables.  Returns the resulting expression
+    -- and the subset of names that were used in the closure.
+    mkIntensionalFunction :: LHsType GhcRn
+                          -> LMatch GhcRn (LHsExpr GhcRn)
+                          -> FreeVars
+                          -> (LHsExpr GhcRn, [Name])
+    mkIntensionalFunction cfnType lmatch freevars =
+      -- Determine the names in the closure
+      let closureNames :: [Name] =
+            filter isInternalName $
+            filter isVarName $
+            nameSetElemsStable freevars
+      in
+      -- Create the extensional function expression
+      let extensionalFunctionExpr :: LHsExpr GhcRn
+          extensionalFunctionExpr = mkLambdaFromLMatch lmatch
+      in
+      -- Create the intensional function label
+      let labelExpr :: LHsExpr GhcRn
+          labelExpr =
+            mkLabelExprFromLocationAndIndex (locA $ getLoc lmatch) genIndex
+      in
+      -- Create the closure
+      let closureExpr :: LHsExpr GhcRn
+          closureExpr = mkClosure cfnType closureNames
+      in
+      -- Create the IntensionalFunction call
+      let intensionalFunctionExpr :: LHsExpr GhcRn
+          intensionalFunctionExpr =
+            mkCallExpr
+              (wrapGenSpan $ HsVar NoExtField $
+                wrapGenSpan intensionalFunctionDataConName)
+              (map (wrapGenSpan . HsPar noAnn)
+                [labelExpr, closureExpr, extensionalFunctionExpr])
+      in
+      (intensionalFunctionExpr, closureNames)
+    -- η-converts the provided expression using the provided variable names.
+    -- For instance, the code
+    --     x + 1
+    -- would, given the name x as a singleton, produce
+    --     (\x -> x + 1) x
+    -- Since these variables x are distinct variables, we will need to ensure
+    -- that they have different Name values (even if those names use the same
+    -- local identifier).  The internal function and use site will be replaced
+    -- by a new name; the external use of "x" will remain the same.
+    monotypeWrap :: LHsExpr GhcRn -> [Name] -> RnM (LHsExpr GhcRn)
+    monotypeWrap expr origNames =
+      if null origNames then return expr else do
+        newNames <- mapM (\name -> do
+                            { uniq <- newUnique
+                            ; return $ mkInternalName uniq
+                                        (nameOccName name)
+                                        generatedSrcSpan }
+                        ) origNames
+        let nameMap = Map.fromList $ zip origNames newNames
+        -- Create a version of the body with all of the relevant names replaced
+        let expr' = gmapT (mkT rename) expr
+              where
+                mkT :: (Typeable a, Typeable b) => (b -> b) -> a -> a
+                mkT = fromMaybe id . cast
+                rename :: Name -> Name
+                rename name = Map.findWithDefault name name nameMap
+        -- AST for "\c1 ... cn -> _mkif ..."
+        let monoWrapperLambda :: LHsExpr GhcRn =
+              let pats =
+                    map (wrapGenSpan . VarPat NoExtField . wrapGenSpan) newNames
+              in
+              mkLambdaFromPatsAndBody pats expr'
+        -- AST for "(\c1 ...) c1 ... cn"
+        let monoWrapperCall :: LHsExpr GhcRn = foldl'
+              (\expr name ->
+                wrapGenSpan $ HsApp noAnn expr $ wrapGenSpan $
+                  HsVar NoExtField $ wrapGenSpan name
+              ) monoWrapperLambda origNames
+        return monoWrapperCall
+
+rnExpr (HsItsCurLam NoExtField matches)
+  = do { {- \%τ₀ x₁ ... xₙ -> e ≡ \%%τ₀ x₁ -> \%%τ₀ x₂ -> ... \%%τ₀ xₙ -> e
+            This is generally pretty straightforward, but we have to make sure
+            that each of these functions gets a different generation index and
+            keeps the source location of the original function.  We translate
+            at the level of syntax and use the match context to carry the
+            generation index.
+         -}
+         let (lmatch, constraintFn) = unpackItsMatchGroup matches
+       ; let pats = m_pats $ unLoc lmatch
+       ; let grhss = m_grhss $ unLoc lmatch
+       ; let grhssIntoFuncExpr :: LPat GhcPs
+                               -> GRHSs GhcPs (LHsExpr GhcPs)
+                               -> Int
+                               -> LHsExpr GhcPs
+             grhssIntoFuncExpr pat grhss genIndex =
+               let match =
+                    Match { m_ext = noAnn
+                          , m_ctxt = ItsUncLambdaExpr constraintFn
+                          , m_pats = [pat]
+                          , m_grhss = grhss
+                          }
+               in
+               wrapGenSpan $ HsItsUncLam genIndex $
+                 MG { mg_ext = NoExtField
+                    , mg_alts = wrapGenSpan $ [L (getLoc lmatch) match]
+                    , mg_origin = Generated
+                    }
+       ; let funcExprIntoGrhss :: LHsExpr GhcPs -> GRHSs GhcPs (LHsExpr GhcPs)
+             funcExprIntoGrhss body =
+              GRHSs { grhssExt = emptyComments
+                    , grhssGRHSs = [L generatedSrcSpan $ GRHS noAnn [] body]
+                    , grhssLocalBinds = EmptyLocalBinds NoExtField
+                    }
+       ; let loop :: [LPat GhcPs] -> Int -> LHsExpr GhcPs
+             loop patsLeft genIndex =
+               case patsLeft of
+                 [] -> panic "curried intensional lambda has no patterns!"
+                 [pat] -> grhssIntoFuncExpr pat grhss genIndex
+                 pat:pats' ->
+                   grhssIntoFuncExpr pat
+                    (funcExprIntoGrhss $ loop pats' (genIndex + 1))
+                    genIndex
+       ; rnExpr $ unLoc $ loop pats 1
+    }
+
 rnExpr (HsLamCase x matches)
   = do { (matches', fvs_ms) <- rnMatchGroup CaseAlt rnLExpr matches
        ; return (HsLamCase x matches', fvs_ms) }
@@ -389,6 +636,14 @@ rnExpr (HsDo _ do_or_lc (L l stmts))
              postProcessStmtsForApplicativeDo stmts
              (\ _ -> return ((), emptyFVs))
         ; return ( HsDo noExtField do_or_lc (L l stmts'), fvs ) }
+
+rnExpr (HsItsDo _ constraintFn lstmts)
+  = do  { lexpr <- rnDesugarIDoStmts
+                    (locA $ getLoc lstmts)
+                    constraintFn
+                    (unLoc lstmts)
+        ; rnExpr $ unLoc lexpr
+        }
 
 -- ExplicitList: see Note [Handling overloaded and rebindable constructs]
 rnExpr (ExplicitList _ exps)
@@ -2568,11 +2823,6 @@ genAppType expr = HsAppType noExtField (wrapGenSpan expr) . mkEmptyWildCardBndrs
 genHsTyLit :: FastString -> HsType GhcRn
 genHsTyLit = HsTyLit noExtField . HsStrTy NoSourceText
 
-wrapGenSpan :: a -> LocatedAn an a
--- Wrap something in a "generatedSrcSpan"
--- See Note [Rebindable syntax and HsExpansion]
-wrapGenSpan x = L (noAnnSrcSpan generatedSrcSpan) x
-
 -- | Build a 'HsExpansion' out of an extension constructor,
 --   and the two components of the expansion: original and
 --   desugared expressions.
@@ -2653,3 +2903,141 @@ rnHsUpdProjs us = do
                                        , hsRecFieldLbl = fmap rnFieldLabelStrings fs
                                        , hsRecFieldArg = arg
                                        , hsRecPun = pun}), fv) }
+
+{-
+************************************************************************
+*                                                                      *
+\subsubsection{Intensional do}
+*                                                                      *
+************************************************************************
+-}
+
+rnDesugarIDoStmts :: SrcSpan -> LHsType GhcPs -> [ExprLStmt GhcPs]
+                  -> RnM (LHsExpr GhcPs)
+rnDesugarIDoStmts ctxloc constraintFn statements =
+  go statements 1
+  where
+    go :: [ExprLStmt GhcPs] -> Int -> RnM (LHsExpr GhcPs)
+    go lstmts genIdx =
+      case lstmts of
+        [] -> failAt ctxloc $ text "empty intensional do block"
+        [lSingletonStmt] ->
+          case unLoc lSingletonStmt of
+            -- If we somehow encounter a statement already formatted as a
+            -- LastStmt, then go with it.
+            LastStmt _ expr _ _ ->
+              return expr
+            -- The parser will, in a do block, ordinarily produce a BodyStmt
+            -- even for the last statement.  Convert accordingly.
+            BodyStmt _ expr _ _ ->
+              return expr
+            -- No other kind of statement should be last.
+            stmt ->
+              let last_error =
+                    text "The last statement in an intensional do block must be an expression"
+              in
+              failAt (locA $ getLoc lSingletonStmt) $
+                hang last_error 2 $ ppr stmt
+        lstmt : lstmts' ->
+          case unLoc lstmt of
+            LastStmt {} ->
+              panic $
+                "LastStmt appeared as non-last statement in intensional do block: " ++
+                show (locA $ getLoc lstmt)
+            BindStmt _anns pat argExpr -> do
+              {-
+                ⟦
+                  intensional c do
+                    x <- y
+                    ..body..
+                ⟧
+                ≡
+                itsBind %@% ( y
+                            , \%%c x ->
+                                ⟦
+                                  intentional c do
+                                    ..body..
+                                ⟧
+                            )
+              -}
+              body <- go lstmts' (genIdx + 1)
+              let itsBind = wrapGenSpan $ HsVar NoExtField $
+                      wrapGenSpan $ Exact intensionalMonadBindName
+              return $ itsMultiApply
+                  (getLoc lstmt)
+                  itsBind
+                  [argExpr, itsFun (getLoc lstmt) genIdx pat body]
+            ApplicativeStmt {} ->
+              panic $ "ApplicativeStmt in intensional do block" ++
+                      show (locA $ getLoc lstmt)
+            BodyStmt NoExtField expr _ _ -> do
+              {-
+                ⟦
+                  intensional c do
+                    x
+                    ..body..
+                ⟧
+                ≡
+                itsThen %@% ( x
+                            , ⟦
+                                intensional c do
+                                  ..body..
+                              ⟧
+                            )
+              -}
+              body <- go lstmts' (genIdx + 1)
+              let itsThen = wrapGenSpan $ HsVar NoExtField $
+                      wrapGenSpan $ Exact intensionalMonadThenName
+              return $ itsMultiApply
+                  (getLoc lstmt)
+                  itsThen
+                  [expr, body]
+            LetStmt _ localBinds -> do
+              body <- go lstmts' (genIdx + 1)
+              return $ wrapGenSpan $ HsLet noAnn localBinds body
+            ParStmt {} ->
+              panic $ "ParStmt appeared in intensional do block: " ++
+                      show (locA $ getLoc lstmt)
+            TransStmt {} ->
+              panic $ "TransStmt appeared in intensional do block: " ++
+                      show (locA $ getLoc lstmt)
+            RecStmt {} ->
+              panic $ "RecStmt appeared in intensional do block: " ++
+                      show (locA $ getLoc lstmt)
+      where
+        -- Simplifies the construction of ASTs which apply wrapped intensional
+        -- functions
+        itsMultiApply :: SrcSpanAnnA
+                      -> LHsExpr GhcPs
+                      -> [LHsExpr GhcPs]
+                      -> LHsExpr GhcPs
+        itsMultiApply spanAnn fn args =
+          L spanAnn $ HsApp noAnn
+            (L spanAnn $ HsApp noAnn
+              (wrapGenSpan $ HsVar NoExtField $
+                wrapGenSpan $
+                  Exact intensionalFunctionsMultiApplyOverloadedName)
+              fn
+            )
+            (wrapGenSpan $ ExplicitTuple noAnn
+              (map (Present noAnn) args) Boxed)
+        -- Simplifies the construction of simple wrapped intensional functions
+        itsFun :: SrcSpanAnnA
+               -> Int
+               -> LPat GhcPs
+               -> LHsExpr GhcPs
+               -> LHsExpr GhcPs
+        itsFun spanAnn genIdx pattern body =
+          wrapGenSpan $ HsItsUncLam genIdx $
+              MG { mg_ext = NoExtField
+                 , mg_alts = wrapGenSpan $ [L spanAnn Match
+                    { m_ext = noAnn
+                    , m_ctxt = ItsCurLambdaExpr constraintFn
+                    , m_pats = [pattern]
+                    , m_grhss = GRHSs
+                      { grhssExt = emptyComments
+                      , grhssGRHSs = [L generatedSrcSpan $ GRHS noAnn [] body]
+                      , grhssLocalBinds = EmptyLocalBinds NoExtField
+                      }
+                    }]
+                 , mg_origin = Generated }

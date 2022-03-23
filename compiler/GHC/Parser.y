@@ -711,6 +711,13 @@ are the most common patterns, rewritten as regular expressions for clarity:
  PRIMFLOAT      { L _ (ITprimfloat  _) }
  PRIMDOUBLE     { L _ (ITprimdouble _) }
 
+-- Intensional functions
+'\\%'           { L _ ITbackslashpct }
+'\\%%'          { L _ ITbackslashpctpct }
+'->%'           { L _ ITrarrowpct }
+'->%%'          { L _ ITrarrowpctpct }
+'intensional'   { L _ ITintensional }
+
 -- Template Haskell
 '[|'            { L _ (ITopenExpQuote _ _) }
 '[p|'           { L _ ITopenPatQuote  }
@@ -2147,6 +2154,14 @@ type :: { LHsType GhcPs }
         | btype '->' ctype             {% acsA (\cs -> sLL (reLoc $1) (reLoc $>)
                                             $ HsFunTy (EpAnn (glAR $1) (mau $2) cs) (HsUnrestrictedArrow (toUnicode $2)) $1 $3) }
 
+        | btype '->%' atype ctype      {% hintIntensionalFunctions (getLoc $2) >>
+                                          acsA (\cs -> sLL (reLoc $1) (reLoc $>)
+                                            $ HsItsCurFunTy noExtField (HsUnrestrictedArrow (toUnicode $2)) $3 $1 $4) }
+
+        | btype '->%%' atype ctype     {% hintIntensionalFunctions (getLoc $2) >>
+                                          acsA (\cs -> sLL (reLoc $1) (reLoc $>)
+                                            $ HsItsUncFunTy noExtField (HsUnrestrictedArrow (toUnicode $2)) $3 $1 $4) }
+
         | btype mult '->' ctype        {% hintLinear (getLoc $2)
                                        >> let arr = (unLoc $2) (toUnicode $3)
                                           in acsA (\cs -> sLL (reLoc $1) (reLoc $>)
@@ -2792,6 +2807,30 @@ aexp    :: { ECP }
                                                  , m_ctxt = LambdaExpr
                                                  , m_pats = $2:$3
                                                  , m_grhss = unguardedGRHSs (comb2 $4 (reLoc $5)) $5 (EpAnn (glR $4) (GrhsAnn Nothing (mu AnnRarrow $4)) emptyComments) }])) }
+        | '\\%' atype apat apats '->' exp
+                   {%do
+                      hintIntensionalFunctions (getLoc $1)
+                      return $ ECP $
+                        unECP $6 >>= \ $6 ->
+                        mkHsItsCurLamPV (comb2 $1 (reLoc $>)) (\cs -> mkMatchGroup FromSource
+                                (reLocA $ sLLlA $1 $>
+                                [reLocA $ sLLlA $1 $>
+                                                $ Match { m_ext = EpAnn (glR $1) [mj AnnItsCurLam $1] cs
+                                                        , m_ctxt = ItsCurLambdaExpr $2
+                                                        , m_pats = $3:$4
+                                                        , m_grhss = unguardedGRHSs (comb2 $5 (reLoc $6)) $6 (EpAnn (glR $5) (GrhsAnn Nothing (mu AnnRarrowpct $5)) emptyComments) }])) }
+        | '\\%%' atype apat apats '->' exp
+                   {%do
+                      hintIntensionalFunctions (getLoc $1)
+                      return $ ECP $
+                        unECP $6 >>= \ $6 ->
+                        mkHsItsUncLamPV (comb2 $1 (reLoc $>)) (\cs -> mkMatchGroup FromSource
+                                (reLocA $ sLLlA $1 $>
+                                [reLocA $ sLLlA $1 $>
+                                                $ Match { m_ext = EpAnn (glR $1) [mj AnnItsUncLam $1] cs
+                                                        , m_ctxt = ItsUncLambdaExpr $2
+                                                        , m_pats = $3:$4
+                                                        , m_grhss = unguardedGRHSs (comb2 $5 (reLoc $6)) $6 (EpAnn (glR $5) (GrhsAnn Nothing (mu AnnRarrowpct $5)) emptyComments) }])) }
         | 'let' binds 'in' exp          {  ECP $
                                            unECP $4 >>= \ $4 ->
                                            mkHsLetPV (comb2A $1 $>) (unLoc $2) $4
@@ -2843,6 +2882,20 @@ aexp    :: { ECP }
                            fmap ecpFromExp $
                            acsA (\cs -> sLLlA $1 $> $ HsProc (EpAnn (glR $1) [mj AnnProc $1,mu AnnRarrow $3] cs) p (sLLlA $1 $> $ HsCmdTop noExtField cmd)) }
 
+        | 'intensional' atype DO stmtlist
+                       {%do
+                          hintIntensionalFunctions (getLoc $1)
+                          return $ ECP $
+                                $4 >>= \ $4 ->
+                                case (getDO $3) of
+                                  Nothing ->
+                                    mkHsItsDoPV (comb2A $1 $4)
+                                        $2
+                                        $4
+                                        (AnnList (Just $ glAR $4) Nothing Nothing [mj AnnIntensional $1, mj AnnItsDo $3] [])
+                                  Just _ ->
+                                    itsPanic "qualified intensional do handling not yet implemented"
+                       }
         | aexp1                 { $1 }
 
 aexp1   :: { ECP }
@@ -3869,8 +3922,8 @@ getVARID        (L _ (ITvarid    x)) = x
 getCONID        (L _ (ITconid    x)) = x
 getVARSYM       (L _ (ITvarsym   x)) = x
 getCONSYM       (L _ (ITconsym   x)) = x
-getDO           (L _ (ITdo      x)) = x
-getMDO          (L _ (ITmdo     x)) = x
+getDO           (L _ (ITdo       x)) = x
+getMDO          (L _ (ITmdo      x)) = x
 getQVARID       (L _ (ITqvarid   x)) = x
 getQCONID       (L _ (ITqconid   x)) = x
 getQVARSYM      (L _ (ITqvarsym  x)) = x
@@ -4131,6 +4184,13 @@ hintQualifiedDo tok = do
       ITdo (Just m) -> Just $ ftext m <> text ".do"
       ITmdo (Just m) -> Just $ ftext m <> text ".mdo"
       t -> Nothing
+
+-- Hint about intensional functions
+hintIntensionalFunctions :: SrcSpan -> P ()
+hintIntensionalFunctions span = do
+  intensionalFunctionsEnabled <- getBit IntensionalFunctionsBit
+  unless intensionalFunctionsEnabled $ addError $
+        PsError PsErrIntensionalFunctions [] span
 
 -- When two single quotes don't followed by tyvar or gtycon, we report the
 -- error as empty character literal, or TH quote that missing proper type

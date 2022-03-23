@@ -102,6 +102,17 @@ Library
         Control.Concurrent.QSemN
         Control.Exception
         Control.Exception.Base
+        Control.Intensional.Alternative
+        Control.Intensional.Applicative
+        Control.Intensional.Functor
+        Control.Intensional.Monad
+        Control.Intensional.Runtime
+        Control.Intensional.Runtime.Constraints
+        Control.Intensional.Runtime.IntensionalFunction
+        Control.Intensional.Runtime.NonEmptyList
+        Control.Intensional.Runtime.NonEmptyHList
+        Control.Intensional.Runtime.Syntax
+        Control.Intensional.UtilityFunctions
         Control.Monad
         Control.Monad.Fail
         Control.Monad.Fix

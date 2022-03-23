@@ -290,6 +290,12 @@ type instance XQualTy          (GhcPass _) = NoExtField
 type instance XTyVar           (GhcPass _) = EpAnn [AddEpAnn]
 type instance XAppTy           (GhcPass _) = NoExtField
 type instance XFunTy           (GhcPass _) = EpAnn TrailingAnn -- For the AnnRarrow or AnnLolly
+type instance XItsCurFunTy     GhcPs       = NoExtField
+type instance XItsCurFunTy     GhcRn       = NoExtCon
+type instance XItsCurFunTy     GhcTc       = NoExtCon
+type instance XItsUncFunTy     GhcPs       = NoExtField
+type instance XItsUncFunTy     GhcRn       = NoExtCon
+type instance XItsUncFunTy     GhcTc       = NoExtCon
 type instance XListTy          (GhcPass _) = EpAnn AnnParen
 type instance XTupleTy         (GhcPass _) = EpAnn AnnParen
 type instance XSumTy           (GhcPass _) = EpAnn AnnParen
@@ -1042,6 +1048,10 @@ ppr_mono_ty (HsTyVar _ prom (L _ name))
   | isPromoted prom = quote (pprPrefixOcc name)
   | otherwise       = pprPrefixOcc name
 ppr_mono_ty (HsFunTy _ mult ty1 ty2)   = ppr_fun_ty mult ty1 ty2
+ppr_mono_ty (HsItsCurFunTy _ mult tyC ty1 ty2) =
+  ppr_its_cur_fun_ty mult tyC ty1 ty2
+ppr_mono_ty (HsItsUncFunTy _ mult tyC ty1 ty2) =
+  ppr_its_unc_fun_ty mult tyC ty1 ty2
 ppr_mono_ty (HsTupleTy _ con tys)
     -- Special-case unary boxed tuples so that they are pretty-printed as
     -- `Solo x`, not `(x)`
@@ -1107,6 +1117,26 @@ ppr_fun_ty mult ty1 ty2
     in
     sep [p1, arr <+> p2]
 
+ppr_its_cur_fun_ty :: (OutputableBndrId p)
+           => HsArrow (GhcPass p) -> LHsType (GhcPass p) -> LHsType (GhcPass p) -> LHsType (GhcPass p) -> SDoc
+ppr_its_cur_fun_ty mult tyC ty1 ty2
+  = let p1 = ppr_mono_lty ty1
+        p2 = ppr_mono_lty ty2
+        pC = ppr_mono_lty tyC
+        arr = pprHsArrow mult
+    in
+    sep [p1, arr <> char '%' <> pC <+> p2]
+
+ppr_its_unc_fun_ty :: (OutputableBndrId p)
+           => HsArrow (GhcPass p) -> LHsType (GhcPass p) -> LHsType (GhcPass p) -> LHsType (GhcPass p) -> SDoc
+ppr_its_unc_fun_ty mult tyC ty1 ty2
+  = let p1 = ppr_mono_lty ty1
+        p2 = ppr_mono_lty ty2
+        pC = ppr_mono_lty tyC
+        arr = pprHsArrow mult
+    in
+    sep [p1, arr <> text "%%" <> pC <+> p2]
+
 --------------------------
 -- | @'hsTypeNeedsParens' p t@ returns 'True' if the type @t@ needs parentheses
 -- under precedence @p@.
@@ -1119,6 +1149,8 @@ hsTypeNeedsParens p = go_hs_ty
     go_hs_ty (HsRecTy{})              = False
     go_hs_ty (HsTyVar{})              = False
     go_hs_ty (HsFunTy{})              = p >= funPrec
+    go_hs_ty (HsItsCurFunTy{})        = p >= funPrec
+    go_hs_ty (HsItsUncFunTy{})        = p >= funPrec
     -- Special-case unary boxed tuple applications so that they are
     -- parenthesized as `Identity (Solo x)`, not `Identity Solo x` (#18612)
     -- See Note [One-tuples] in GHC.Builtin.Types
@@ -1183,6 +1215,8 @@ lhsTypeHasLeadingPromotionQuote ty
     go (HsRecTy{})           = False
     go (HsTyVar _ p _)       = isPromoted p
     go (HsFunTy _ _ arg _)   = goL arg
+    go (HsItsCurFunTy _ _ _ arg _) = goL arg
+    go (HsItsUncFunTy _ _ _ arg _) = goL arg
     go (HsListTy{})          = False
     go (HsTupleTy{})         = False
     go (HsSumTy{})           = False

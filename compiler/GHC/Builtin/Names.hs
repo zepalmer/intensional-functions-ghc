@@ -511,6 +511,23 @@ basicKnownKeyNames
         , unsafeEqualityTyConName
         , unsafeReflDataConName
         , unsafeCoercePrimName
+
+        -- Intensional functions
+        , intensionalFunctionsNonEmptyListTyConName
+        , intensionalFunctionsNonEmptyListSingletonDataConName
+        , intensionalFunctionsNonEmptyListConsDataConName
+        , intensionalFunctionsNonEmptyHListTyConName
+        , intensionalFunctionsNonEmptyHListSingletonDataConName
+        , intensionalFunctionsNonEmptyHListConsDataConName
+        , intensionalFunctionClosureItemName
+        , intensionalFunctionTyConName
+        , intensionalFunctionDataConName
+        , intensionalFunctionsLabelTyConName
+        , intensionalFunctionsLabelDataConName
+        , intensionalFunctionsMultiApplyOverloadedName
+        , intensionalFunctionSyntacticInputName
+        , intensionalMonadThenName
+        , intensionalMonadBindName
     ]
 
 genericTyConNames :: [Name]
@@ -653,6 +670,28 @@ gHC_OVER_LABELS = mkBaseModule (fsLit "GHC.OverloadedLabels")
 
 gHC_RECORDS :: Module
 gHC_RECORDS = mkBaseModule (fsLit "GHC.Records")
+
+cONTROL_INTENSIONAL_MONAD :: Module
+cONTROL_INTENSIONAL_MONAD =
+  mkBaseModule (fsLit "Control.Intensional.Monad")
+
+cONTROL_INTENSIONAL_RUNTIME_NONEMPTYLIST :: Module
+cONTROL_INTENSIONAL_RUNTIME_NONEMPTYLIST =
+  mkBaseModule (fsLit "Control.Intensional.Runtime.NonEmptyList")
+
+cONTROL_INTENSIONAL_RUNTIME_NONEMPTYHLIST :: Module
+cONTROL_INTENSIONAL_RUNTIME_NONEMPTYHLIST =
+  mkBaseModule (fsLit "Control.Intensional.Runtime.NonEmptyHList")
+
+cONTROL_INTENSIONAL_RUNTIME_INTENSIONAL_FUNCTION :: Module
+cONTROL_INTENSIONAL_RUNTIME_INTENSIONAL_FUNCTION =
+  mkBaseModule
+    (fsLit "Control.Intensional.Runtime.IntensionalFunction")
+
+cONTROL_INTENSIONAL_RUNTIME_SYNTAX :: Module
+cONTROL_INTENSIONAL_RUNTIME_SYNTAX =
+  mkBaseModule
+    (fsLit "Control.Intensional.Runtime.Syntax")
 
 rOOT_MAIN :: Module
 rOOT_MAIN       = mkMainModule (fsLit ":Main") -- Root module for initialisation
@@ -2759,6 +2798,124 @@ bignatFromWordListIdKey    = mkPreludeMiscIdUnique 690
 mkRationalBase2IdKey, mkRationalBase10IdKey :: Unique
 mkRationalBase2IdKey  = mkPreludeMiscIdUnique 700
 mkRationalBase10IdKey = mkPreludeMiscIdUnique 701 :: Unique
+
+------------------------------------------------------
+-- Intensional functions use 800-899 uniques
+------------------------------------------------------
+
+-- ITSTODO: delete the ones that didn't actually get used
+
+-- Intensional functions NonEmptyList and related names
+
+intensionalFunctionsNonEmptyListTyConKey :: Unique
+intensionalFunctionsNonEmptyListTyConKey = mkPreludeTyConUnique 800
+intensionalFunctionsNonEmptyListSingletonDataConKey :: Unique
+intensionalFunctionsNonEmptyListSingletonDataConKey =
+  mkPreludeDataConUnique 801
+intensionalFunctionsNonEmptyListConsDataConKey :: Unique
+intensionalFunctionsNonEmptyListConsDataConKey = mkPreludeDataConUnique 802
+
+intensionalFunctionsNonEmptyListTyConName :: Name
+intensionalFunctionsNonEmptyListTyConName =
+  tcQual cONTROL_INTENSIONAL_RUNTIME_NONEMPTYLIST
+    (fsLit "NonEmptyList") intensionalFunctionsNonEmptyListTyConKey
+intensionalFunctionsNonEmptyListSingletonDataConName :: Name
+intensionalFunctionsNonEmptyListSingletonDataConName =
+  dcQual cONTROL_INTENSIONAL_RUNTIME_NONEMPTYLIST
+    (fsLit "NonEmptyListSingleton")
+    intensionalFunctionsNonEmptyListSingletonDataConKey
+intensionalFunctionsNonEmptyListConsDataConName :: Name
+intensionalFunctionsNonEmptyListConsDataConName =
+  dcQual cONTROL_INTENSIONAL_RUNTIME_NONEMPTYLIST
+    (fsLit "NonEmptyListCons") intensionalFunctionsNonEmptyListConsDataConKey
+
+-- Intensional functions NonEmptyHList and related names
+
+intensionalFunctionsNonEmptyHListTyConKey :: Unique
+intensionalFunctionsNonEmptyHListTyConKey = mkPreludeTyConUnique 810
+intensionalFunctionsNonEmptyHListSingletonDataConKey :: Unique
+intensionalFunctionsNonEmptyHListSingletonDataConKey =
+  mkPreludeDataConUnique 811
+intensionalFunctionsNonEmptyHListConsDataConKey :: Unique
+intensionalFunctionsNonEmptyHListConsDataConKey = mkPreludeDataConUnique 812
+
+intensionalFunctionsNonEmptyHListTyConName :: Name
+intensionalFunctionsNonEmptyHListTyConName =
+  tcQual cONTROL_INTENSIONAL_RUNTIME_NONEMPTYHLIST
+    (fsLit "NonEmptyHList") intensionalFunctionsNonEmptyHListTyConKey
+intensionalFunctionsNonEmptyHListSingletonDataConName :: Name
+intensionalFunctionsNonEmptyHListSingletonDataConName =
+  dcQual cONTROL_INTENSIONAL_RUNTIME_NONEMPTYHLIST
+    (fsLit "NonEmptyHListSingleton")
+    intensionalFunctionsNonEmptyHListSingletonDataConKey
+intensionalFunctionsNonEmptyHListConsDataConName :: Name
+intensionalFunctionsNonEmptyHListConsDataConName =
+  dcQual cONTROL_INTENSIONAL_RUNTIME_NONEMPTYHLIST
+    (fsLit "NonEmptyHListCons") intensionalFunctionsNonEmptyHListConsDataConKey
+
+-- IntensionalFunction ADT and related names.
+
+intensionalFunctionClosureItemKey :: Unique
+intensionalFunctionClosureItemKey = mkPreludeDataConUnique 820
+intensionalFunctionTyConKey :: Unique
+intensionalFunctionTyConKey = mkPreludeTyConUnique 821
+intensionalFunctionDataConKey :: Unique
+intensionalFunctionDataConKey = mkPreludeDataConUnique 822
+intensionalFunctionsLabelTyConKey :: Unique
+intensionalFunctionsLabelTyConKey = mkPreludeTyConUnique 823
+intensionalFunctionsLabelDataConKey :: Unique
+intensionalFunctionsLabelDataConKey = mkPreludeDataConUnique 824
+intensionalFunctionsMultiApplyOverloadedKey :: Unique
+intensionalFunctionsMultiApplyOverloadedKey = mkPreludeMiscIdUnique 825
+
+intensionalFunctionClosureItemName :: Name
+intensionalFunctionClosureItemName =
+  dcQual cONTROL_INTENSIONAL_RUNTIME_INTENSIONAL_FUNCTION
+    (fsLit "ClosureItem") intensionalFunctionClosureItemKey
+intensionalFunctionTyConName :: Name
+intensionalFunctionTyConName =
+  tcQual cONTROL_INTENSIONAL_RUNTIME_INTENSIONAL_FUNCTION
+    (fsLit "IntensionalFunction") intensionalFunctionTyConKey
+intensionalFunctionDataConName :: Name
+intensionalFunctionDataConName =
+  dcQual cONTROL_INTENSIONAL_RUNTIME_INTENSIONAL_FUNCTION
+    (fsLit "IntensionalFunction") intensionalFunctionDataConKey
+intensionalFunctionsLabelTyConName :: Name
+intensionalFunctionsLabelTyConName =
+  tcQual cONTROL_INTENSIONAL_RUNTIME_INTENSIONAL_FUNCTION
+    (fsLit "Label") intensionalFunctionsLabelTyConKey
+intensionalFunctionsLabelDataConName :: Name
+intensionalFunctionsLabelDataConName =
+  dcQual cONTROL_INTENSIONAL_RUNTIME_INTENSIONAL_FUNCTION
+    (fsLit "Label") intensionalFunctionsLabelDataConKey
+intensionalFunctionsMultiApplyOverloadedName :: Name
+intensionalFunctionsMultiApplyOverloadedName =
+  varQual cONTROL_INTENSIONAL_RUNTIME_INTENSIONAL_FUNCTION
+    (fsLit "%@%") intensionalFunctionsMultiApplyOverloadedKey
+
+-- Intensional function syntax support
+intensionalFunctionSyntacticInputKey :: Unique
+intensionalFunctionSyntacticInputKey = mkPreludeTyConUnique 840
+
+intensionalFunctionSyntacticInputName :: Name
+intensionalFunctionSyntacticInputName =
+  tcQual cONTROL_INTENSIONAL_RUNTIME_SYNTAX
+    (fsLit "IntensionalFunctionSyntacticInput")
+    intensionalFunctionSyntacticInputKey
+
+-- Intensional algebraic structures and related names
+
+intensionalMonadThenKey :: Unique
+intensionalMonadThenKey = mkPreludeMiscIdUnique 850
+intensionalMonadBindKey :: Unique
+intensionalMonadBindKey = mkPreludeMiscIdUnique 851
+
+intensionalMonadThenName :: Name
+intensionalMonadThenName =
+  varQual cONTROL_INTENSIONAL_MONAD (fsLit "itsThen") intensionalMonadThenKey
+intensionalMonadBindName :: Name
+intensionalMonadBindName =
+  varQual cONTROL_INTENSIONAL_MONAD (fsLit "itsBind") intensionalMonadBindKey
 
 {-
 ************************************************************************

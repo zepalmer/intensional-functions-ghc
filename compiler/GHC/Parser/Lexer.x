@@ -880,6 +880,13 @@ data Token
   | ITlineComment     String     PsSpan -- ^ comment starting by "--"
   | ITblockComment    String     PsSpan -- ^ comment in {- -}
 
+  -- Intensional functions
+  | ITbackslashpct               -- ^ Curried intensional lambda "\%"
+  | ITbackslashpctpct            -- ^ Uncurried intensional lambda "\%%"
+  | ITrarrowpct                  -- ^ Curried intensional function type "->%"
+  | ITrarrowpctpct               -- ^ Uncurried intensional function type "->%%"
+  | ITintensional                -- ^ For e.g. "intensional Eq do"
+
   deriving Show
 
 instance Outputable Token where
@@ -1005,7 +1012,9 @@ reservedWordsFM = listToUFM $
 
          ( "rec",            ITrec,           xbit ArrowsBit .|.
                                               xbit RecursiveDoBit),
-         ( "proc",           ITproc,          xbit ArrowsBit)
+         ( "proc",           ITproc,          xbit ArrowsBit),
+
+         ( "intensional",    ITintensional,   xbit IntensionalFunctionsBit)
      ]
 
 {-----------------------------------
@@ -1034,9 +1043,13 @@ reservedSymsFM = listToUFM $
        ,("::",  ITdcolon NormalSyntax,      NormalSyntax,  0 )
        ,("=",   ITequal,                    NormalSyntax,  0 )
        ,("\\",  ITlam,                      NormalSyntax,  0 )
+       ,("\\%", ITbackslashpct,             NormalSyntax,  0 )
+       ,("\\%%",ITbackslashpctpct,          NormalSyntax,  0 )
        ,("|",   ITvbar,                     NormalSyntax,  0 )
        ,("<-",  ITlarrow NormalSyntax,      NormalSyntax,  0 )
        ,("->",  ITrarrow NormalSyntax,      NormalSyntax,  0 )
+       ,("->%", ITrarrowpct,                NormalSyntax,  0 )
+       ,("->%%",ITrarrowpctpct,             NormalSyntax,  0 )
        ,("=>",  ITdarrow NormalSyntax,      NormalSyntax,  0 )
        ,("-",   ITminus,                    NormalSyntax,  xbit NoLexicalNegationBit)
 
@@ -2728,6 +2741,7 @@ data ExtBits
   | NoLexicalNegationBit   -- See Note [Why not LexicalNegationBit]
   | OverloadedRecordDotBit
   | OverloadedRecordUpdateBit
+  | IntensionalFunctionsBit
 
   -- Flags that are updated once parsing starts
   | InRulePragBit
@@ -2806,6 +2820,7 @@ mkParserOpts warningFlags extensionFlags
       .|. NoLexicalNegationBit        `xoptNotBit` LangExt.LexicalNegation -- See Note [Why not LexicalNegationBit]
       .|. OverloadedRecordDotBit      `xoptBit` LangExt.OverloadedRecordDot
       .|. OverloadedRecordUpdateBit   `xoptBit` LangExt.OverloadedRecordUpdate  -- Enable testing via 'getBit OverloadedRecordUpdateBit' in the parser (RecordDotSyntax parsing uses that information).
+      .|. IntensionalFunctionsBit     `xoptBit` LangExt.IntensionalFunctions
     optBits =
           HaddockBit        `setBitIf` isHaddock
       .|. RawTokenStreamBit `setBitIf` rawTokStream

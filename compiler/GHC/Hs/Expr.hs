@@ -249,6 +249,13 @@ type instance XLitE          (GhcPass _) = EpAnnCO
 
 type instance XLam           (GhcPass _) = NoExtField
 
+type instance XItsCurLam     GhcPs       = NoExtField
+type instance XItsCurLam     GhcRn       = NoExtCon
+type instance XItsCurLam     GhcTc       = NoExtCon
+type instance XItsUncLam     GhcPs       = Int -- Index for desugared ItsCurLam
+type instance XItsUncLam     GhcRn       = NoExtCon
+type instance XItsUncLam     GhcTc       = NoExtCon
+
 type instance XLamCase       (GhcPass _) = EpAnn [AddEpAnn]
 type instance XApp           (GhcPass _) = EpAnnCO
 
@@ -305,6 +312,10 @@ type instance XLet           GhcTc = NoExtField
 type instance XDo            GhcPs = EpAnn AnnList
 type instance XDo            GhcRn = NoExtField
 type instance XDo            GhcTc = Type
+
+type instance XItsDo         GhcPs = EpAnn AnnList
+type instance XItsDo         GhcRn = NoExtCon
+type instance XItsDo         GhcTc = NoExtCon
 
 type instance XExplicitList  GhcPs = EpAnn AnnList
 type instance XExplicitList  GhcRn = NoExtField
@@ -550,6 +561,12 @@ ppr_expr (ExplicitSum _ alt arity expr)
 ppr_expr (HsLam _ matches)
   = pprMatches matches
 
+ppr_expr (HsItsCurLam _ matches)
+  = pprMatches matches
+
+ppr_expr (HsItsUncLam _ matches)
+  = pprMatches matches
+
 ppr_expr (HsLamCase _ matches)
   = sep [ sep [text "\\case"],
           nest 2 (pprMatches matches) ]
@@ -588,6 +605,8 @@ ppr_expr (HsLet _ binds expr)
          hang (text "in")  2 (ppr expr)]
 
 ppr_expr (HsDo _ do_or_list_comp (L _ stmts)) = pprDo do_or_list_comp stmts
+
+ppr_expr (HsItsDo _ typ (L _ stmts)) = pprIDo typ stmts
 
 ppr_expr (ExplicitList _ exprs)
   = brackets (pprDeeperList fsep (punctuate comma (map ppr_lexpr exprs)))
@@ -732,6 +751,8 @@ hsExprNeedsParens p = go
     go (ExplicitTuple{})              = False
     go (ExplicitSum{})                = False
     go (HsLam{})                      = p > topPrec
+    go (HsItsCurLam{})                = p > topPrec
+    go (HsItsUncLam{})                = p > topPrec
     go (HsLamCase{})                  = p > topPrec
     go (HsCase{})                     = p > topPrec
     go (HsIf{})                       = p > topPrec
@@ -740,6 +761,7 @@ hsExprNeedsParens p = go
     go (HsDo _ sc _)
       | isComprehensionContext sc     = False
       | otherwise                     = p > topPrec
+    go (HsItsDo _ _ _)                = p > topPrec
     go (ExplicitList{})               = False
     go (RecordUpd{})                  = False
     go (ExprWithTySig{})              = p >= sigPrec
@@ -1191,6 +1213,34 @@ matchGroupArity (MG { mg_alts = alts })
 hsLMatchPats :: LMatch (GhcPass id) body -> [LPat (GhcPass id)]
 hsLMatchPats (L _ (Match { m_pats = pats })) = pats
 
+unpackItsMatchGroup :: forall body id .
+                       ( Anno [LocatedA (Match (GhcPass id) body)] ~ SrcSpanAnnL
+                       , Anno (Match (GhcPass id) body) ~ SrcSpanAnnA
+                       )
+                    => MatchGroup (GhcPass id) body
+                    -> ( LMatch (GhcPass id) body
+                       , LHsType (NoGhcTc (GhcPass id))
+                       )
+unpackItsMatchGroup matchGroup =
+  let alts = mg_alts matchGroup in
+  case unLoc alts of
+    [] ->
+      panic $ "Empty match group in intensional function at " ++
+        show (locA $ getLoc alts)
+    [match] ->
+      let constraintFn =
+            case m_ctxt $ unLoc match of
+              ItsCurLambdaExpr constraintFn -> constraintFn
+              ItsUncLambdaExpr constraintFn -> constraintFn
+              _ ->
+                panic $ "Non-intensional context on intensional function at " ++
+                  show (locA $ getLoc alts)
+      in
+      (match, constraintFn)
+    _:_:_ ->
+      panic $ "Multiple matches in intensional function at " ++
+        show (locA $ getLoc alts)
+
 -- We keep the type checker happy by providing EpAnnComments.  They
 -- can only be used if they follow a `where` keyword with no binds,
 -- but in that case the comment is attached to the following parsed
@@ -1259,6 +1309,12 @@ pprMatch (Match { m_pats = pats, m_ctxt = ctxt, m_grhss = grhss })
                      _ -> pprPanic "pprMatch" (ppr ctxt $$ ppr pats)
 
             LambdaExpr -> (char '\\', pats)
+
+            ItsCurLambdaExpr cfn ->
+              (text "\\%" <> ppr (parenthesizeHsType appPrec cfn), pats)
+
+            ItsUncLambdaExpr cfn ->
+              (text "\\%%" <> ppr (parenthesizeHsType appPrec cfn), pats)
 
             _ -> case pats of
                    []    -> (empty, [])
@@ -1493,6 +1549,13 @@ pprDo (MDoExpr m)   stmts =
 pprDo ListComp      stmts = brackets    $ pprComp stmts
 pprDo MonadComp     stmts = brackets    $ pprComp stmts
 pprDo _             _     = panic "pprDo" -- PatGuard, ParStmtCxt
+
+pprIDo :: (OutputableBndrId p, Outputable body,
+                  Anno (StmtLR (GhcPass p) (GhcPass p) body) ~ SrcSpanAnnA
+          )
+       => LHsType (GhcPass p) -> [LStmt (GhcPass p) body] -> SDoc
+pprIDo (L _ typ) stmts =
+  text "do%" <> pprHsType typ <+> ppr_do_stmts stmts
 
 ppr_module_name_prefix :: Maybe ModuleName -> SDoc
 ppr_module_name_prefix = \case
@@ -1755,6 +1818,8 @@ pp_dotdot = text " .. "
 instance OutputableBndrId p => Outputable (HsMatchContext (GhcPass p)) where
   ppr m@(FunRhs{})          = text "FunRhs" <+> ppr (mc_fun m) <+> ppr (mc_fixity m)
   ppr LambdaExpr            = text "LambdaExpr"
+  ppr (ItsCurLambdaExpr _)  = text "ItsCurLambdaExpr"
+  ppr (ItsUncLambdaExpr _)  = text "ItsUncLambdaExpr"
   ppr CaseAlt               = text "CaseAlt"
   ppr IfAlt                 = text "IfAlt"
   ppr (ArrowMatchCtxt c)    = text "ArrowMatchCtxt" <+> ppr c
@@ -1787,6 +1852,8 @@ matchContextErrString PatBindRhs                 = text "pattern binding"
 matchContextErrString PatBindGuards              = text "pattern binding guards"
 matchContextErrString RecUpd                     = text "record update"
 matchContextErrString LambdaExpr                 = text "lambda"
+matchContextErrString (ItsCurLambdaExpr _)       = text "curried intensional lambda"
+matchContextErrString (ItsUncLambdaExpr _)       = text "uncurried intensional lambda"
 matchContextErrString (ArrowMatchCtxt c)         = matchArrowContextErrString c
 matchContextErrString ThPatSplice                = panic "matchContextErrString"  -- Not used at runtime
 matchContextErrString ThPatQuote                 = panic "matchContextErrString"  -- Not used at runtime

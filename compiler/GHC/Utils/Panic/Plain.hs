@@ -22,6 +22,8 @@ module GHC.Utils.Panic.Plain
   , cmdLineError, cmdLineErrorIO
   , assertPanic
 
+  , itsPanic
+
   , progName
   ) where
 
@@ -120,6 +122,12 @@ panic    x = unsafeDupablePerformIO $ do
 
 sorry    x = throwPlainGhcException (PlainSorry x)
 pgmError x = throwPlainGhcException (PlainProgramError x)
+
+-- ITSTODO: we shouldn't need this in an ideal world, but we're using it
+-- to track TODOs that should be dealt with eventually (as opposed to panics
+-- that actually seem reasonable in an imaginary finished product)
+itsPanic :: String -> a
+itsPanic x = throwPlainGhcException (PlainPanic ("ITSTODO: " ++ x))
 
 cmdLineError :: String -> a
 cmdLineError = unsafeDupablePerformIO . cmdLineErrorIO

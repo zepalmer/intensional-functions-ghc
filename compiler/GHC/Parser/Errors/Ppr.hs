@@ -589,6 +589,19 @@ pp_err = \case
          , text "Perhaps you intended to use QualifiedDo"
          ]
 
+   PsErrIntensionalFunctions
+      -> vcat
+         [ text "Illegal intensional function syntax"
+         , text "Enable IntensionalFunctions to allow intensional functions"
+         ]
+
+   PsErrItsDoNotationInPat
+      -> text "intensional do-notation in pattern"
+
+   PsErrItsLambdaInPat
+      -> text "Lambda-syntax in pattern."
+         $$ text "Pattern matching on functions is not possible."
+
 pp_unexpected_fun_app :: Outputable a => SDoc -> a -> SDoc
 pp_unexpected_fun_app e a =
    text "Unexpected " <> e <> text " in function application:"

@@ -17,6 +17,7 @@ module GHC.Rename.Utils (
         warnUnusedTopBinds, warnUnusedLocalBinds,
         checkUnusedRecordWildcard,
         mkFieldEnv,
+        wrapGenSpan,
         unknownSubordinateErr, badQualBndrErr, typeAppErr,
         HsDocContext(..), pprHsDocContext,
         inHsDocContext, withHsDocContext,
@@ -472,6 +473,11 @@ reportable child
                                   -- Otherwise we get a zillion warnings
                                   -- from Data.Tuple
   | otherwise = not (startsWithUnderscore (occName child))
+
+-- Wrap something in a "generatedSrcSpan"
+-- See Note [Rebindable syntax and HsExpansion]
+wrapGenSpan :: a -> LocatedAn an a
+wrapGenSpan x = L (noAnnSrcSpan generatedSrcSpan) x
 
 addUnusedWarning :: WarningFlag -> OccName -> SrcSpan -> SDoc -> RnM ()
 addUnusedWarning flag occ span msg

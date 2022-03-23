@@ -25,7 +25,7 @@ module GHC.Rename.Bind (
 
    -- Other bindings
    rnMethodBinds, renameSigs,
-   rnMatchGroup, rnGRHSs, rnGRHS, rnSrcFixityDecl,
+   rnMatchGroup, rnMatch, rnGRHSs, rnGRHS, rnSrcFixityDecl,
    makeMiniFixityEnv, MiniFixityEnv,
    HsSigCtxt(..)
    ) where
