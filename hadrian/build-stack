@@ -5,6 +5,23 @@ set -euo pipefail
 
 STACK="${STACK:-stack}"
 
+# ZEP (2022-03-29): We want this fork of GHC to build properly with Stack for
+# testing purposes, but Hadrian no longer supports -c and Stack always emits it.
+# Workaround: find (and remove) the "-c" from the argument list and, if we did
+# find it, do the "./boot && ./configure" step ourselves.
+doconf=''
+args=()
+for item in "$@"; do
+    if [ "$item" = "-c" ]; then
+        doconf='y'
+    else
+        args+=( "$item" )
+    fi
+done
+if [ "$doconf" = "y" ]; then
+    ( ./boot && ./configure ) || exit $?
+fi
+
 # Make sure Hadrian is up-to-date
 cd hadrian
 $STACK build --no-library-profiling ${HADRIAN_NIX:+--nix}
@@ -12,4 +29,4 @@ $STACK build --no-library-profiling ${HADRIAN_NIX:+--nix}
 # Run Hadrian in the top-level GHC directory
 $STACK exec hadrian -- \
     --directory ".."  \
-    "$@"
+    "$args"
