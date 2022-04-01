@@ -26,6 +26,7 @@ packageArgs = do
 
     cursesIncludeDir <- getSetting CursesIncludeDir
     cursesLibraryDir <- getSetting CursesLibDir
+    debugAssertions  <- ghcDebugAssertions <$> expr flavour
 
     mconcat
         --------------------------------- base ---------------------------------
@@ -48,9 +49,14 @@ packageArgs = do
           [ builder Alex ? arg "--latin1"
 
           , builder (Ghc CompileHs) ? mconcat
-            [ inputs ["**/GHC.hs", "**/GHC/Driver/Make.hs"] ? arg "-fprof-auto"
+            [ debugAssertions ? notStage0 ? arg "-DDEBUG"
+
+            , inputs ["**/GHC.hs", "**/GHC/Driver/Make.hs"] ? arg "-fprof-auto"
             , input "**/Parser.hs" ?
               pure ["-fno-ignore-interface-pragmas", "-fcmm-sink"]
+            -- Enable -haddock and -Winvalid-haddock for the compiler
+            , arg "-haddock"
+            , notStage0 ? arg "-Winvalid-haddock"
             -- These files take a very long time to compile with -O1,
             -- so we use -O0 for them just in Stage0 to speed up the
             -- build but not affect Stage1+ executables
@@ -72,7 +78,9 @@ packageArgs = do
 
         ---------------------------------- ghc ---------------------------------
         , package ghc ? mconcat
-          [ builder Ghc ? arg ("-I" ++ compilerPath)
+          [ builder Ghc ? mconcat
+             [ arg ("-I" ++ compilerPath)
+             , debugAssertions ? notStage0 ? arg "-DDEBUG" ]
 
           , builder (Cabal Flags) ? mconcat
             [ andM [expr ghcWithInterpreter, notStage0] `cabalFlag` "internal-interpreter"
@@ -153,6 +161,14 @@ packageArgs = do
         -------------------------------- haddock -------------------------------
         , package haddock ?
           builder (Cabal Flags) ? arg "in-ghc-tree"
+
+        ---------------------------------- text --------------------------------
+        , package text ? mconcat
+          -- Disable SIMDUTF by default due to packaging difficulties
+          -- described in #20724.
+          [ builder (Cabal Flags) ? arg "-simdutf"
+          -- https://github.com/haskell/text/issues/415
+          , builder Ghc ? input "**/Data/Text/Encoding.hs"  ? arg "-Wno-unused-imports" ]
 
         ------------------------------- haskeline ------------------------------
         -- Hadrian doesn't currently support packages containing both libraries

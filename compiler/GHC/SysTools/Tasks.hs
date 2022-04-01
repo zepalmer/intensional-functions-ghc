@@ -29,8 +29,10 @@ import GHC.Utils.Misc
 import GHC.Utils.Logger
 import GHC.Utils.TmpFs
 import GHC.Utils.Constants (isWindowsHost)
+import GHC.Utils.Panic
 
 import Data.List (tails, isPrefixOf)
+import Data.Maybe (fromMaybe)
 import System.IO
 import System.Process
 
@@ -325,7 +327,10 @@ ld: warning: symbol referencing errors
 runMergeObjects :: Logger -> TmpFs -> DynFlags -> [Option] -> IO ()
 runMergeObjects logger tmpfs dflags args =
   traceToolCommand logger "merge-objects" $ do
-    let (p,args0) = pgm_lm dflags
+    let (p,args0) = fromMaybe err (pgm_lm dflags)
+        err = throwGhcException $ UsageError $ unwords
+            [ "Attempted to merge object files but the configured linker"
+            , "does not support object merging." ]
         optl_args = map Option (getOpts dflags opt_lm)
         args2     = args0 ++ args ++ optl_args
     -- N.B. Darwin's ld64 doesn't support response files. Consequently we only
@@ -369,25 +374,11 @@ runRanlib logger dflags args = traceToolCommand logger "ranlib" $ do
 
 runWindres :: Logger -> DynFlags -> [Option] -> IO ()
 runWindres logger dflags args = traceToolCommand logger "windres" $ do
-  let cc = pgm_c dflags
-      cc_args = map Option (sOpt_c (settings dflags))
+  let cc_args = map Option (sOpt_c (settings dflags))
       windres = pgm_windres dflags
       opts = map Option (getOpts dflags opt_windres)
-      quote x = "\"" ++ x ++ "\""
-      args' = -- If windres.exe and gcc.exe are in a directory containing
-              -- spaces then windres fails to run gcc. We therefore need
-              -- to tell it what command to use...
-              [ Option ("--preprocessor=" ++ quote cc) ]
-              ++ map (Option . ("--preprocessor-arg=" ++) . quote)
-                     (map showOpt opts ++ ["-E", "-xc", "-DRC_INVOKED"])
-              -- ...but if we do that then if windres calls popen then
-              -- it can't understand the quoting, so we have to use
-              -- --use-temp-file so that it interprets it correctly.
-              -- See #1828.
-              ++ [ Option "--use-temp-file" ]
-              ++ args
   mb_env <- getGccEnv cc_args
-  runSomethingFiltered logger id "Windres" windres args' Nothing mb_env
+  runSomethingFiltered logger id "Windres" windres (opts ++ args) Nothing mb_env
 
 touch :: Logger -> DynFlags -> String -> String -> IO ()
 touch logger dflags purpose arg = traceToolCommand logger "touch" $

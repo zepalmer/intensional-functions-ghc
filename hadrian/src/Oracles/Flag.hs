@@ -1,8 +1,11 @@
 {-# LANGUAGE MultiWayIf #-}
 
 module Oracles.Flag (
-    Flag (..), flag, getFlag, platformSupportsSharedLibs,
-    targetSupportsSMP, useLibffiForAdjustors
+    Flag (..), flag, getFlag,
+    platformSupportsSharedLibs,
+    platformSupportsGhciObjects,
+    targetSupportsSMP,
+    useLibffiForAdjustors
     ) where
 
 import Hadrian.Oracles.TextFile
@@ -12,6 +15,7 @@ import Base
 import Oracles.Setting
 
 data Flag = ArSupportsAtFile
+          | ArSupportsDashL
           | CrossCompiling
           | CcLlvmBackend
           | GhcUnregisterised
@@ -34,6 +38,7 @@ flag :: Flag -> Action Bool
 flag f = do
     let key = case f of
             ArSupportsAtFile     -> "ar-supports-at-file"
+            ArSupportsDashL      -> "ar-supports-dash-l"
             CrossCompiling       -> "cross-compiling"
             CcLlvmBackend        -> "cc-llvm-backend"
             GhcUnregisterised    -> "ghc-unregisterised"
@@ -57,6 +62,12 @@ flag f = do
 -- | Get a configuration setting.
 getFlag :: Flag -> Expr c b Bool
 getFlag = expr . flag
+
+-- | Does the platform support object merging (and therefore we can build GHCi objects
+-- when appropriate).
+platformSupportsGhciObjects :: Action Bool
+platformSupportsGhciObjects =
+    not . null <$> settingsFileSetting SettingsFileSetting_MergeObjectsCommand
 
 platformSupportsSharedLibs :: Action Bool
 platformSupportsSharedLibs = do

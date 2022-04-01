@@ -130,7 +130,7 @@ runPhase (T_Cmm pipe_env hsc_env input_fn) = do
   output_fn <- phaseOutputFilenameNew next_phase pipe_env hsc_env Nothing
   mstub <- hscCompileCmmFile hsc_env input_fn output_fn
   stub_o <- mapM (compileStub hsc_env) mstub
-  let foreign_os = (maybeToList stub_o)
+  let foreign_os = maybeToList stub_o
   return (foreign_os, output_fn)
 
 runPhase (T_Cc phase pipe_env hsc_env input_fn) = runCcPhase phase pipe_env hsc_env input_fn
@@ -1089,14 +1089,45 @@ enabled in the toolchain:
    suggests, this tells the linker to produce a bigobj-enabled COFF object, no a
    PE executable.
 
-We must enable bigobj output in a few places:
+Previously when we used ld.bfd we had to enable bigobj output in a few places:
 
  * When merging object files (GHC.Driver.Pipeline.Execute.joinObjectFiles)
 
  * When assembling (GHC.Driver.Pipeline.runPhase (RealPhase As ...))
 
+However, this is no longer necessary with ld.lld, which detects that the
+object is large on its own.
+
 Unfortunately the big object format is not supported on 32-bit targets so
 none of this can be used in that case.
+
+
+Note [Object merging]
+~~~~~~~~~~~~~~~~~~~~~
+On most platforms one can "merge" a set of relocatable object files into a new,
+partiall-linked-but-still-relocatable object. In a typical UNIX-style linker,
+this is accomplished with the `ld -r` command. We rely on this for two ends:
+
+ * We rely on `ld -r` to squash together split sections, making GHCi loading
+   more efficient. See Note [Merging object files for GHCi].
+
+ * We use merging to combine a module's object code (e.g. produced by the NCG)
+   with its foreign stubs (typically produced by a C compiler).
+
+The command used for object linking is set using the -pgmlm and -optlm
+command-line options.
+
+Sadly, the LLD linker that we use on Windows does not support the `-r` flag
+needed to support object merging (see #21068). For this reason on Windows we do
+not support GHCi objects.  To deal with foreign stubs we build a static archive
+of all of a module's object files instead merging them. Consequently, we can
+end up producing `.o` files which are in fact static archives. However,
+toolchains generally don't have a problem with this as they use file headers,
+not the filename, to determine the nature of inputs.
+
+Note that this has somewhat non-obvious consequences when producing
+initializers and finalizers. See Note [Initializers and finalizers in Cmm]
+in GHC.Cmm.InitFini for details.
 
 
 Note [Merging object files for GHCi]
@@ -1113,11 +1144,12 @@ text section section and can consequently be mapped far more efficiently. As
 gcc tends to do unpredictable things to our linker command line, we opt to
 invoke ld directly in this case, in contrast to our usual strategy of linking
 via gcc.
-
 -}
 
+-- | See Note [Object merging].
 joinObjectFiles :: HscEnv -> [FilePath] -> FilePath -> IO ()
-joinObjectFiles hsc_env o_files output_fn = do
+joinObjectFiles hsc_env o_files output_fn
+  | can_merge_objs = do
   let toolSettings' = toolSettings dflags
       ldIsGnuLd = toolSettings_ldIsGnuLd toolSettings'
       ld_r args = GHC.SysTools.runMergeObjects (hsc_logger hsc_env) (hsc_tmpfs hsc_env) (hsc_dflags hsc_env) (
@@ -1147,7 +1179,14 @@ joinObjectFiles hsc_env o_files output_fn = do
                 GHC.SysTools.FileOption "" filelist]
      else
           ld_r (map (GHC.SysTools.FileOption "") o_files)
+
+  | otherwise = do
+  withAtomicRename output_fn $ \tmp_ar ->
+      liftIO $ runAr logger dflags Nothing $ map Option $ ["qc" ++ dashL, tmp_ar] ++ o_files
   where
+    dashLSupported = sArSupportsDashL (settings dflags)
+    dashL = if dashLSupported then "L" else ""
+    can_merge_objs = isJust (pgm_lm (hsc_dflags hsc_env))
     dflags = hsc_dflags hsc_env
     tmpfs = hsc_tmpfs hsc_env
     logger = hsc_logger hsc_env
