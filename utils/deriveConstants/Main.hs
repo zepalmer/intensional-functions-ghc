@@ -476,6 +476,7 @@ wanteds os = concat
           ,closureFieldOffset Both "StgStack" "stack"
           ,closureField       C    "StgStack" "stack_size"
           ,closureField       C    "StgStack" "dirty"
+          ,closureField       C    "StgStack" "marking"
 
           ,structSize C "StgTSOProfInfo"
 
@@ -483,6 +484,11 @@ wanteds os = concat
 
           ,closureField C "StgCatchFrame" "handler"
           ,closureField C "StgCatchFrame" "exceptions_blocked"
+
+          ,structSize  C "StgRetFun"
+          ,fieldOffset C "StgRetFun" "size"
+          ,fieldOffset C "StgRetFun" "fun"
+          ,fieldOffset C "StgRetFun" "payload"
 
           ,closureSize       C "StgPAP"
           ,closureField      C "StgPAP" "n_args"
