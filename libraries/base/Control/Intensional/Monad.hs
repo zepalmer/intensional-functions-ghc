@@ -44,12 +44,12 @@ itsThen = \%%c a b ->
   itsBind %@% (a, \%c _ -> b)
 
 itsAp :: forall c m a b.
-         ( IntensionalMonad m
+         ( Typeable a, Typeable b
+         , c (m a)
          , IntensionalFunctorCF m ~ c
          , IntensionalFunctorMapC m a b
+         , IntensionalMonad m
          , IntensionalMonadBindC m (a ->%c b) b
-         , Typeable a, Typeable b
-         , c (m a)
          )
       => '[m (a ->%c b), m a] ->%%c m b
 itsAp = \%%c f x ->

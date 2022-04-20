@@ -22,7 +22,7 @@ class (IntensionalApplicative f)
   type IntensionalAlternativeChoiceC f a :: Constraint
   itsEmpty :: (IntensionalAlternativeEmptyC f a) => f a
   (%<|>) :: (IntensionalAlternativeChoiceC f a, IntensionalFunctorCF f ~ c)
-         => f a ->%c f a ->%c f a
+         => '[f a, f a] ->%%c f a
 
 {- ========== Intensional MonadPlus ========== -}
 
@@ -32,4 +32,4 @@ class (IntensionalAlternative m, IntensionalMonad m)
   type IntensionalMonadPlusPlusC m a :: Constraint
   itsMzero :: (IntensionalMonadPlusZeroC m a) => m a
   itsMplus :: (IntensionalMonadPlusPlusC m a, IntensionalFunctorCF m ~ c)
-           => m a ->%c m a ->%c m a
+           => '[m a, m a] ->%%c m a
