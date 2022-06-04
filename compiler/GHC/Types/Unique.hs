@@ -18,6 +18,7 @@ Haskell).
 -}
 
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE BangPatterns, MagicHash #-}
 
 module GHC.Types.Unique (
