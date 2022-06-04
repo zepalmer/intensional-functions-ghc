@@ -199,7 +199,7 @@ It is also associated with a lazy reference to the Z-encoding
 of this string which is used by the compiler internally.
 -}
 data FastString = FastString {
-      uniq    :: {-# UNPACK #-} !Int, -- unique id
+      -- uniq    :: {-# UNPACK #-} !Int, -- unique id
       n_chars :: {-# UNPACK #-} !Int, -- number of chars
       fs_sbs  :: {-# UNPACK #-} !ShortByteString,
       fs_zenc :: FastZString
@@ -211,7 +211,8 @@ data FastString = FastString {
   }
 
 instance Eq FastString where
-  f1 == f2  =  uniq f1 == uniq f2
+  f1 == f2  =  fs_sbs f1 == fs_sbs f2
+  {-# INLINE (==) #-}
 
 -- We don't provide any "Ord FastString" instance to force you to think about
 -- which ordering you want:
@@ -246,16 +247,20 @@ instance NFData FastString where
 -- If you don't care about the lexical ordering, use `uniqCompareFS` instead.
 lexicalCompareFS :: FastString -> FastString -> Ordering
 lexicalCompareFS fs1 fs2 =
-  if uniq fs1 == uniq fs2 then EQ else
+  -- if uniq fs1 == uniq fs2 then EQ else
   utf8CompareShortByteString (fs_sbs fs1) (fs_sbs fs2)
   -- perform a lexical comparison taking into account the Modified UTF-8
   -- encoding we use (cf #18562)
+{-# INLINE lexicalCompareFS #-}
 
 -- | Compare FastString by their Unique (not lexically).
 --
 -- Much cheaper than `lexicalCompareFS` but non-deterministic!
 uniqCompareFS :: FastString -> FastString -> Ordering
-uniqCompareFS fs1 fs2 = compare (uniq fs1) (uniq fs2)
+uniqCompareFS (FastString _ (SBS.SBS barr1#) _) (FastString _ (SBS.SBS barr2#) _) =
+    let l1# = sizeofByteArray# barr1#
+        l2# = sizeofByteArray# barr2#
+    in compare (I# l1#) (I# l2#) <> compare (I# (compareByteArrays# barr1# 0# barr2# 0# l1#)) 0
 
 -- | Non-deterministic FastString
 --
@@ -552,10 +557,10 @@ mkZFastString n_zencs sbs = unsafePerformIO $ do
 
 mkNewFastStringShortByteString :: ShortByteString -> Int
                                -> FastMutInt -> IO FastString
-mkNewFastStringShortByteString sbs uid n_zencs = do
+mkNewFastStringShortByteString sbs _ n_zencs = do
   let zstr = mkZFastString n_zencs sbs
   chars <- countUTF8Chars sbs
-  return (FastString uid chars sbs zstr)
+  return (FastString chars sbs zstr)
 
 hashStr  :: ShortByteString -> Int
  -- produce a hash value between 0 & m (inclusive)
@@ -624,7 +629,7 @@ unconsFS fs =
     (chr : str) -> Just (chr, mkFastString str)
 
 uniqueOfFS :: FastString -> Int
-uniqueOfFS fs = uniq fs
+uniqueOfFS fs = hashFastString fs
 
 nilFS :: FastString
 nilFS = mkFastString ""
