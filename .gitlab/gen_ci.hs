@@ -772,7 +772,7 @@ jobs = M.fromList $ concatMap flattenJobGroup $
      , allowFailureGroup (disableValidate (standardBuilds ARMv7 (Linux Debian10)))
      , standardBuilds I386 (Linux Debian9)
      , allowFailureGroup (standardBuildsWithConfig Amd64 (Linux Alpine) static)
-     , allowFailureGroup (disableValidate (standardBuildsWithConfig I386 (Linux Alpine) static))
+     , allowFailureGroup (standardBuildsWithConfig I386 (Linux Alpine) static)
      , disableValidate (allowFailureGroup (standardBuildsWithConfig Amd64 (Linux Alpine) staticNativeInt))
      ]
 
