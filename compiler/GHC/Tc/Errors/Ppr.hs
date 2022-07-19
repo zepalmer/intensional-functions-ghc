@@ -234,6 +234,15 @@ instance Diagnostic TcRnMessage where
       -> mkSimpleDecorated $
            vcat [ text "Illegal `..' notation for constructor" <+> quotes (ppr con)
                 , nest 2 (text "The constructor has no labelled fields") ]
+           vcat [text "The data constructor" <+> quotes (ppr con) <+> "does not have named record fields,\
+                      \so a pattern match" <+> quotes (ppr con) <+> " { .. } is incorrect."
+                , text "Possible fixes:"
+                , nest 2 (text "* Replace the pattern '" <+> quotes (ppr con) <+> "'{ .. }' with" <+> quotes (ppr con))
+                , nest 2 (text "* Replace the pattern '" <+> quotes (ppr con) <+> "'{ .. }' with" <+> quotes (ppr con) <+> "{}")
+                , nest 4 (text "This version works even if you add/remove fields to " <+> quotes (ppr con) <+> "later")
+                ]
+
+
     TcRnIgnoringAnnotations anns
       -> mkSimpleDecorated $
            text "Ignoring ANN annotation" <> plural anns <> comma
