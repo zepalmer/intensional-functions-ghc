@@ -232,14 +232,15 @@ instance Diagnostic TcRnMessage where
       -> mkSimpleDecorated $ text "character literal out of range: '\\" <> char c  <> char '\''
     TcRnIllegalWildcardsInConstructor con
       -> mkSimpleDecorated $
-           vcat [ text "Illegal `..' notation for constructor" <+> quotes (ppr con)
-                , nest 2 (text "The constructor has no labelled fields") ]
-           vcat [text "The data constructor" <+> quotes (ppr con) <+> "does not have named record fields,\
-                      \so a pattern match" <+> quotes (ppr con) <+> " { .. } is incorrect."
+           vcat [ text "The data constructor"
+                  <+> quotes (ppr con)
+                  <+> text "does not have named record fields, so a pattern match"
+                  <+> quotes (ppr con)
+                  <+> text " { .. } is incorrect."
                 , text "Possible fixes:"
-                , nest 2 (text "* Replace the pattern '" <+> quotes (ppr con) <+> "'{ .. }' with" <+> quotes (ppr con))
-                , nest 2 (text "* Replace the pattern '" <+> quotes (ppr con) <+> "'{ .. }' with" <+> quotes (ppr con) <+> "{}")
-                , nest 4 (text "This version works even if you add/remove fields to " <+> quotes (ppr con) <+> "later")
+                , nest 2 (text "* Replace the pattern '" <+> quotes (ppr con) <+> text "'{ .. }' with" <+> quotes (ppr con))
+                , nest 2 (text "* Replace the pattern '" <+> quotes (ppr con) <+> text "'{ .. }' with" <+> quotes (ppr con) <+> text "{}")
+                , nest 4 (text "This version works even if you add/remove fields to " <+> quotes (ppr con) <+> text "later")
                 ]
 
 
