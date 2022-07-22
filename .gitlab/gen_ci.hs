@@ -103,6 +103,8 @@ data LinuxDistro
 
 data Arch = Amd64 | AArch64 | ARMv7 | I386
 
+data TestSpeed = TestSpeedSlow | TestSpeedNormal | TestSpeedFast
+
 data BignumBackend = Native | Gmp deriving Eq
 
 bignumString :: BignumBackend -> String
@@ -124,6 +126,7 @@ data BuildConfig
                 , fullyStatic    :: Bool
                 , tablesNextToCode :: Bool
                 , threadSanitiser :: Bool
+                , testSpeed      :: TestSpeed
                 }
 
 -- Extra arguments to pass to ./configure due to the BuildConfig
@@ -167,6 +170,7 @@ vanilla = BuildConfig
   , fullyStatic = False
   , tablesNextToCode = True
   , threadSanitiser = False
+  , testSpeed = TestSpeedNormal
   }
 
 nativeInt :: BuildConfig
@@ -253,6 +257,11 @@ archName Amd64 = "x86_64"
 archName AArch64 = "aarch64"
 archName ARMv7 = "armv7"
 archName I386  = "i386"
+
+testSpeedName :: TestSpeed -> String
+testSpeedName TestSpeedFast   = "fast"
+testSpeedName TestSpeedNormal = "normal"
+testSpeedName TestSpeedSlow   = "slow"
 
 binDistName :: Arch -> Opsys -> BuildConfig -> String
 binDistName arch opsys bc = "ghc-" ++ testEnv arch opsys bc
@@ -631,13 +640,14 @@ job arch opsys buildConfig = (jobName, Job {..})
     jobDependencies = []
     jobVariables = mconcat
       [ opsysVariables arch opsys
-      ,"TEST_ENV" =: testEnv arch opsys buildConfig
+      , "TEST_ENV" =: testEnv arch opsys buildConfig
       , "BIN_DIST_NAME" =: binDistName arch opsys buildConfig
       , "BUILD_FLAVOUR" =: flavourString jobFlavour
       , "BIGNUM_BACKEND" =: bignumString (bignumBackend buildConfig)
       , "CONFIGURE_ARGS" =: configureArgsStr buildConfig
       , maybe mempty ("CROSS_TARGET" =:) (crossTarget buildConfig)
       , maybe mempty ("CROSS_EMULATOR" =:) (crossEmulator buildConfig)
+      , "TEST_SPEED"     =: testSpeedName (testSpeed buildConfig)
       , if withNuma buildConfig then "ENABLE_NUMA" =: "1" else mempty
       ]
 
