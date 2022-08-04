@@ -43,6 +43,7 @@ initTidyOpts hsc_env = do
     , opt_expose_rules      = not (gopt Opt_OmitInterfacePragmas dflags)
     , opt_trim_ids          = gopt Opt_OmitInterfacePragmas dflags
     , opt_static_ptr_opts   = static_ptr_opts
+    , opt_keep_orphan_rules = gopt Opt_KeepAutoRules dflags
     }
 
 initStaticPtrOpts :: HscEnv -> IO StaticPtrOpts

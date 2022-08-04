@@ -358,6 +358,7 @@ data TidyOpts = TidyOpts
       -- ^ Are rules exposed or not?
   , opt_static_ptr_opts :: !(Maybe StaticPtrOpts)
       -- ^ Options for generated static pointers, if enabled (/= Nothing).
+  , opt_keep_orphan_rules :: !Bool
   }
 
 tidyProgram :: TidyOpts -> ModGuts -> IO (CgGuts, ModDetails)
@@ -382,6 +383,7 @@ tidyProgram opts (ModGuts { mg_module           = mod
   let implicit_binds = concatMap getImplicitBinds tcs
 
   (unfold_env, tidy_occ_env) <- chooseExternalIds opts mod binds implicit_binds imp_rules
+  -- pprTraceM "findExternalRules" $ ppr imp_rules
   let (trimmed_binds, trimmed_rules) = findExternalRules opts binds imp_rules unfold_env
 
   let uf_opts = opt_unfolding_opts opts
@@ -391,6 +393,8 @@ tidyProgram opts (ModGuts { mg_module           = mod
   (spt_entries, mcstub, tidy_binds') <- case opt_static_ptr_opts opts of
     Nothing    -> pure ([], Nothing, tidy_binds)
     Just sopts -> sptCreateStaticBinds sopts mod tidy_binds
+
+  -- pprTraceM "trimmed_rules" (ppr trimmed_rules)
 
   let all_foreign_stubs = case mcstub of
         Nothing    -> foreign_stubs
@@ -976,10 +980,13 @@ findExternalRules :: TidyOpts
 findExternalRules opts binds imp_id_rules unfold_env
   = (trimmed_binds, filter keep_rule all_rules)
   where
-    imp_rules         = filter expose_rule imp_id_rules
+    imp_rules
+      | not (opt_expose_rules opts) = []
+      | otherwise = filter expose_rule imp_id_rules
     imp_user_rule_fvs = mapUnionVarSet user_rule_rhs_fvs imp_rules
 
-    user_rule_rhs_fvs rule | isAutoRule rule = emptyVarSet
+    user_rule_rhs_fvs rule | isAutoRule rule && not (opt_keep_orphan_rules opts)
+                                             = emptyVarSet
                            | otherwise       = ruleRhsFreeVars rule
 
     (trimmed_binds, local_bndrs, _, all_rules) = trim_binds binds
@@ -998,7 +1005,6 @@ findExternalRules opts binds imp_id_rules unfold_env
         --      been discarded; see Note [Trimming auto-rules]
 
     expose_rule rule
-        | not (opt_expose_rules opts) = False
         | otherwise  = all is_external_id (ruleLhsFreeIdsList rule)
                 -- Don't expose a rule whose LHS mentions a locally-defined
                 -- Id that is completely internal (i.e. not visible to an
