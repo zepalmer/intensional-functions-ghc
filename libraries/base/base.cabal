@@ -318,8 +318,6 @@ Library
         Type.Reflection
         Type.Reflection.Unsafe
         Unsafe.Coerce
-        -- TODO: remove
-        GHC.IOPort
 
     reexported-modules:
           GHC.Num.Integer
@@ -348,7 +346,6 @@ Library
         GHC.Event.IntVar
         GHC.Event.PSQ
         GHC.Event.Unique
-        -- GHC.IOPort -- TODO: hide again after debug
         GHC.Unicode.Internal.Bits
         GHC.Unicode.Internal.Char.UnicodeData.GeneralCategory
         GHC.Unicode.Internal.Char.UnicodeData.SimpleLowerCaseMapping

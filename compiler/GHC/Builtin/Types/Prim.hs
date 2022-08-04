@@ -71,7 +71,6 @@ module GHC.Builtin.Types.Prim(
         mutVarPrimTyCon, mkMutVarPrimTy,
 
         mVarPrimTyCon,                  mkMVarPrimTy,
-        ioPortPrimTyCon,                mkIOPortPrimTy,
         tVarPrimTyCon,                  mkTVarPrimTy,
         stablePtrPrimTyCon,             mkStablePtrPrimTy,
         stableNamePrimTyCon,            mkStableNamePrimTy,
@@ -182,7 +181,6 @@ exposedPrimTyCons
     , mutableByteArrayPrimTyCon
     , smallMutableArrayPrimTyCon
     , mVarPrimTyCon
-    , ioPortPrimTyCon
     , tVarPrimTyCon
     , mutVarPrimTyCon
     , realWorldTyCon
@@ -227,7 +225,7 @@ charPrimTyConName, intPrimTyConName, int8PrimTyConName, int16PrimTyConName, int3
   arrayPrimTyConName, smallArrayPrimTyConName, byteArrayPrimTyConName,
   mutableArrayPrimTyConName, mutableByteArrayPrimTyConName,
   smallMutableArrayPrimTyConName, mutVarPrimTyConName, mVarPrimTyConName,
-  ioPortPrimTyConName, tVarPrimTyConName, stablePtrPrimTyConName,
+  tVarPrimTyConName, stablePtrPrimTyConName,
   stableNamePrimTyConName, compactPrimTyConName, bcoPrimTyConName,
   weakPrimTyConName, threadIdPrimTyConName,
   eqPrimTyConName, eqReprPrimTyConName, eqPhantPrimTyConName,
@@ -259,7 +257,6 @@ mutableArrayPrimTyConName     = mkPrimTc (fsLit "MutableArray#") mutableArrayPri
 mutableByteArrayPrimTyConName = mkPrimTc (fsLit "MutableByteArray#") mutableByteArrayPrimTyConKey mutableByteArrayPrimTyCon
 smallMutableArrayPrimTyConName= mkPrimTc (fsLit "SmallMutableArray#") smallMutableArrayPrimTyConKey smallMutableArrayPrimTyCon
 mutVarPrimTyConName           = mkPrimTc (fsLit "MutVar#") mutVarPrimTyConKey mutVarPrimTyCon
-ioPortPrimTyConName           = mkPrimTc (fsLit "IOPort#") ioPortPrimTyConKey ioPortPrimTyCon
 mVarPrimTyConName             = mkPrimTc (fsLit "MVar#") mVarPrimTyConKey mVarPrimTyCon
 tVarPrimTyConName             = mkPrimTc (fsLit "TVar#") tVarPrimTyConKey tVarPrimTyCon
 stablePtrPrimTyConName        = mkPrimTc (fsLit "StablePtr#") stablePtrPrimTyConKey stablePtrPrimTyCon
@@ -1015,20 +1012,6 @@ mutVarPrimTyCon = pcPrimTyCon_LevPolyLastArg mutVarPrimTyConName [Nominal, Repre
 
 mkMutVarPrimTy :: Type -> Type -> Type
 mkMutVarPrimTy s elt        = TyConApp mutVarPrimTyCon [getLevity elt, s, elt]
-
-{-
-************************************************************************
-*                                                                      *
-\subsection[TysPrim-io-port-var]{The synchronizing I/O Port type}
-*                                                                      *
-************************************************************************
--}
-
-ioPortPrimTyCon :: TyCon
-ioPortPrimTyCon = pcPrimTyCon_LevPolyLastArg ioPortPrimTyConName [Nominal, Representational] unliftedRepTy
-
-mkIOPortPrimTy :: Type -> Type -> Type
-mkIOPortPrimTy s elt          = TyConApp ioPortPrimTyCon [getLevity elt, s, elt]
 
 {-
 ************************************************************************

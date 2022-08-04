@@ -31,7 +31,7 @@
     - `Array#`, `SmallArray#`, `Weak#`, `StablePtr#`, `StableName#`,
 
     - `MutableArray#`, `SmallMutableArray#`, `MutVar#`,
-      `TVar#`, `MVar#`, `IOPort#`.
+      `TVar#`, `MVar#`
 
   For example, `Array#` used to have kind:
 
@@ -87,8 +87,6 @@
         `tryPutMVar#`, `readMVar#`, `tryReadMVar#`,
 
     - `STM` operations `atomically#`, `retry#`, `catchRetry#` and `catchSTM#`.
-
-    - `newIOPort#`, `readIOPort#`, `writeIOPort#`,
 
     - `mkWeak#`, `mkWeakNoFinalizer#`, `addCFinalizerToWeak#`, `deRefWeak#`, `finalizeWeak#`,
 
@@ -188,7 +186,6 @@
   - `sameMutableArray#`, `sameSmallMutableArray#`, `sameMutableByteArray#`
      and `sameMutableArrayArray#`,
   - `sameMutVar#`, `sameTVar#` and`sameMVar#`,
-  - `sameIOPort#`,
   - `eqStableName#`.
 
 - The following functions have been added to `GHC.Exts`:
