@@ -190,6 +190,7 @@ debug = vanilla { buildFlavour = SlowValidate
                 , withAssertions = True
                 -- WithNuma so at least one job tests Numa
                 , withNuma = True
+                , testSpeed = TestSpeedSlow
                 }
 
 static :: BuildConfig
