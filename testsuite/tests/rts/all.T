@@ -478,11 +478,13 @@ test('T19381',
 test('T20199', [ grep_errmsg('Hello') ]
       , makefile_test, [])
 
-test('cloneMyStack', [extra_files(['cloneStackLib.c'])], compile_and_run, ['cloneStackLib.c'])
+test('ipeMap', [c_src], compile_and_run, [''])
+
+test('cloneMyStack', [only_ways(['normal']), extra_files(['cloneStackLib.c'])], compile_and_run, ['cloneStackLib.c'])
 test('cloneMyStack2', ignore_stdout, compile_and_run, [''])
 test('cloneMyStack_retBigStackFrame', [extra_files(['cloneStackLib.c']), ignore_stdout], compile_and_run, ['cloneStackLib.c'])
 test('cloneThreadStack', [only_ways(['threaded1']), extra_ways(['threaded1']), extra_files(['cloneStackLib.c'])], compile_and_run, ['cloneStackLib.c -threaded'])
-test('decodeMyStack', normal, compile_and_run, ['-finfo-table-map'])
+test('decodeMyStack', only_ways(['normal']), compile_and_run, ['-finfo-table-map'])
 # Options:
 #   - `-kc8K`: Set stack chunk size to it's minimum to provoke underflow stack frames.
 test('decodeMyStack_underflowFrames', [extra_run_opts('+RTS -kc8K -RTS')], compile_and_run, ['-finfo-table-map -rtsopts'])
