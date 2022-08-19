@@ -1,6 +1,7 @@
 # Changelog for [`base` package](http://hackage.haskell.org/package/base)
 
 ## 4.19.0.0 *TBA*
+
   * Add `Data.List.!?` ([CLC proposal #110](https://github.com/haskell/core-libraries-committee/issues/110))
   * `maximumBy`/`minimumBy` are now marked as `INLINE` improving performance for unpackable
     types significantly.
@@ -12,6 +13,11 @@
   * Add `Type.Reflection.decTypeRep`, `Data.Typeable.decT` and `Data.Typeable.hdecT` equality decisions functions.
       ([CLC proposal #98](https://github.com/haskell/core-libraries-committee/issues/98))
   * Add `Data.Functor.unzip` ([CLC proposal #88](https://github.com/haskell/core-libraries-committee/issues/88))
+  * Exceptions now capture backtrace information via their `ExceptionContext`. GHC
+    supports several mechanisms by which backtraces can be collected which can be
+    individually enabled and disabled via
+    `GHC.Exception.Backtrace.setEnabledBacktraceMechanisms`.
+  * Exceptions can now be decorated with user-defined annotations via `ExceptionContext`.
 
 ## 4.18.0.0 *TBA*
 

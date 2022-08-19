@@ -4,7 +4,10 @@
            , MagicHash
            , PatternSynonyms
   #-}
-{-# LANGUAGE DataKinds, PolyKinds #-}
+{-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE PolyKinds #-}
 {-# OPTIONS_HADDOCK not-home #-}
 
 -----------------------------------------------------------------------------
@@ -27,6 +30,7 @@ module GHC.Exception
        , ErrorCall(..,ErrorCall)
        , errorCallException
        , errorCallWithCallStackException
+       , toExceptionWithBacktrace
 
          -- * Re-exports from GHC.Types
        , CallStack, fromCallSiteList, getCallStack, prettyCallStack
@@ -41,6 +45,8 @@ import GHC.OldList
 import GHC.IO.Unsafe
 import {-# SOURCE #-} GHC.Stack.CCS
 import {-# SOURCE #-} GHC.Stack (prettyCallStackLines, prettyCallStack, prettySrcLoc)
+import {-# SOURCE #-} GHC.Exception.Backtrace (collectBacktraces)
+import GHC.Exception.Context
 import GHC.Exception.Type
 
 -- | Throw an exception.  Exceptions may be thrown from purely
@@ -49,8 +55,18 @@ import GHC.Exception.Type
 -- WARNING: You may want to use 'throwIO' instead so that your pure code
 -- stays exception-free.
 throw :: forall (r :: RuntimeRep). forall (a :: TYPE r). forall e.
-         Exception e => e -> a
-throw e = raise# (toException e)
+         (?callStack :: CallStack, Exception e) => e -> a
+throw e =
+    let !se = unsafePerformIO (toExceptionWithBacktrace e)
+    in raise# se
+
+toExceptionWithBacktrace :: (HasCallStack, Exception e)
+                         => e -> IO SomeException
+toExceptionWithBacktrace e
+  | backtraceDesired e = do
+      bt <- collectBacktraces
+      return (addExceptionContext bt (toException e))
+  | otherwise = return (toException e)
 
 -- | This is thrown when the user calls 'error'. The first @String@ is the
 -- argument given to 'error', second @String@ is the location.
@@ -84,7 +100,7 @@ errorCallWithCallStackException s stk = unsafeDupablePerformIO $ do
     implicitParamCallStack = prettyCallStackLines stk
     ccsCallStack = showCCSStack ccsStack
     stack = intercalate "\n" $ implicitParamCallStack ++ ccsCallStack
-  return $ toException (ErrorCallWithLocation s stack)
+  toExceptionWithBacktrace (ErrorCallWithLocation s stack)
 
 showCCSStack :: [String] -> [String]
 showCCSStack [] = []
