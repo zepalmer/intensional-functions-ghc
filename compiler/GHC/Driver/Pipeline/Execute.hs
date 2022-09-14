@@ -977,8 +977,7 @@ llvmOptions :: LlvmConfig
             -> DynFlags
             -> [(String, String)]  -- ^ pairs of (opt, llc) arguments
 llvmOptions llvm_config dflags =
-       [("-enable-tbaa -tbaa",  "-enable-tbaa") | gopt Opt_LlvmTBAA dflags ]
-    ++ [("-relocation-model=" ++ rmodel
+       [("-relocation-model=" ++ rmodel
         ,"-relocation-model=" ++ rmodel) | not (null rmodel)]
     ++ [("-stack-alignment=" ++ (show align)
         ,"-stack-alignment=" ++ (show align)) | align > 0 ]

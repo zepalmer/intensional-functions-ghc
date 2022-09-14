@@ -1,5 +1,5 @@
 [
-(0, "-mem2reg -globalopt -lower-expect"),
-(1, "-O1 -globalopt"),
-(2, "-O2")
+(0, "-passes=tbaa,mem2reg,globalopt,lower-expect"),
+(1, "-passes=tbaa,default1,-globalopt"),
+(2, "-passes=tbaa,default2")
 ]

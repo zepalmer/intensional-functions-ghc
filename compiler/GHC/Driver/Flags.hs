@@ -264,7 +264,6 @@ data GeneralFlag
    | Opt_RegsGraph                      -- do graph coloring register allocation
    | Opt_RegsIterative                  -- do iterative coalescing graph coloring register allocation
    | Opt_PedanticBottoms                -- Be picky about how we treat bottom
-   | Opt_LlvmTBAA                       -- Use LLVM TBAA infrastructure for improving AA (hidden flag)
    | Opt_LlvmFillUndefWithGarbage       -- Testing for undef bugs (hidden flag)
    | Opt_IrrefutableTuples
    | Opt_CmmSink
@@ -504,7 +503,6 @@ optimisationFlags = EnumSet.fromList
    , Opt_RegsGraph
    , Opt_RegsIterative
    , Opt_PedanticBottoms
-   , Opt_LlvmTBAA
    , Opt_LlvmFillUndefWithGarbage
    , Opt_IrrefutableTuples
    , Opt_CmmSink
