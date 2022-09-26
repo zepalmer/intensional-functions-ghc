@@ -215,6 +215,8 @@ defaults
 --      This means one shouldn't write a type involving both `a` and `o`,
 --      nor `b` and `p`, nor `o` and `v`, etc.
 
+primtype TYPE
+
 section "The word size story."
         {Haskell98 specifies that signed integers (type 'Int')
          must contain at least 30 bits. GHC always implements
