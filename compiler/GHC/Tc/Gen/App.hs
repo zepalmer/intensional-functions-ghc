@@ -19,6 +19,7 @@ module GHC.Tc.Gen.App
 
 import {-# SOURCE #-} GHC.Tc.Gen.Expr( tcPolyExpr )
 
+import GHC.Types.Name
 import GHC.Types.Var
 import GHC.Builtin.Types ( multiplicityTy )
 import GHC.Tc.Gen.Head
@@ -584,6 +585,15 @@ tcInstFun do_ql inst_final (rn_fun, fun_ctxt) fun_sigma rn_args
     -- go1: fun_ty is not filled-in instantiation variable
     --      ('go' dealt with that case)
 
+    -- Handle out-of-scope functions gracefully
+    go1 delta acc so_far fun_ty (ETypeArg{} : rest_args)
+      | fun_is_out_of_scope   -- See Note [VTA for out-of-scope functions]
+      = go delta acc so_far fun_ty rest_args
+    go1 delta acc so_far fun_ty (EValArg{ eva_arg = ValArg e } : rest_args)
+      | fun_is_out_of_scope
+      , vdq_suspect e
+      = go delta acc so_far fun_ty rest_args
+
     -- Rule IALL from Fig 4 of the QL paper
     -- c.f. GHC.Tc.Utils.Instantiate.topInstantiate
     go1 delta acc so_far fun_ty args
@@ -599,6 +609,27 @@ tcInstFun do_ql inst_final (rn_fun, fun_ctxt) fun_sigma rn_args
                 -- Going around again means we deal easily with
                 -- nested  forall a. Eq a => forall b. Show b => blah
 
+    go1 delta acc so_far fun_ty ((EValArg { eva_arg = ValArg arg }) : rest_args)
+      | Just (tvb, body) <- tcSplitForAllTyVarBinder_maybe fun_ty
+      , binderFlag tvb == Required
+      = do { let tv = binderVar tvb
+           ; ty_arg <- tc_vdq_arg (tyVarKind tv) arg
+             -- TODO (int-index): zonk the inner type?
+             --                   This is what tcVTA does. See #14158 and Note [Visible type application zonk]
+             --                   However, I tried to reproduce the issue in T14158_vdq
+             --                   and it works even without a zonk here.
+           ; let in_scope  = mkInScopeSet (tyCoVarsOfTypes [fun_ty, ty_arg])
+                                -- TODO (int-index): I used fun_ty instead of body here, as that's what tcVTA does.
+                                -- But why? Using tyCoVarOfTypes [body, ty_arg] seems to work just as well.
+                 inst_body = substTyWithInScope in_scope [tv] [ty_arg] body
+                 wrap      = mkWpTyApps [ty_arg]
+           ; traceTc "Instantiating VDQ"
+                 (vcat [ text "tv"   <+> ppr tv
+                       , text "type" <+> debugPprType body
+                       , text "with" <+> debugPprType ty_arg])
+           ; go delta (addArgWrap wrap acc) so_far inst_body rest_args
+           }
+
     -- Rule IRESULT from Fig 4 of the QL paper
     go1 delta acc _ fun_ty []
        = do { traceTc "tcInstFun:ret" (ppr fun_ty)
@@ -613,10 +644,6 @@ tcInstFun do_ql inst_final (rn_fun, fun_ctxt) fun_sigma rn_args
     -- Rule ITYARG from Fig 4 of the QL paper
     go1 delta acc so_far fun_ty ( ETypeArg { eva_ctxt = ctxt, eva_at = at, eva_hs_ty = hs_ty }
                                 : rest_args )
-      | fun_is_out_of_scope   -- See Note [VTA for out-of-scope functions]
-      = go delta acc so_far fun_ty rest_args
-
-      | otherwise
       = do { (ty_arg, inst_ty) <- tcVTA fun_ty hs_ty
            ; let arg' = ETypeArg { eva_ctxt = ctxt, eva_at = at, eva_hs_ty = hs_ty, eva_ty = ty_arg }
            ; go delta (arg' : acc) so_far inst_ty rest_args }
@@ -678,6 +705,68 @@ tcInstFun do_ql inst_final (rn_fun, fun_ctxt) fun_sigma rn_args
                        : addArgWrap wrap acc
           ; go delta' acc' (arg_ty:so_far) res_ty rest_args }
 
+-- | Do we suspect that the argument was intended for VDQ?
+-- If so, we might want to generate a different error message.
+--
+-- Note that we don't use this to infer VDQ because:
+--   * We never infer VDQ!
+--   * And even if we did, this would be a terrible way to guide inference.
+vdq_suspect :: LHsExpr GhcRn -> Bool
+vdq_suspect (L l etop) = case etop of
+    -- Indications that an expression was intended for VDQ:
+    --   * it mentions type constructors or type variables
+    --   * it contains types embedded via the ‘type’ keyword
+    HsVar _ (L _ name) -> isTyConName name || isTyVarName name
+    HsEmbTy{} -> True
+
+    -- Recurse to check subexpressions:
+    HsPar _ _ e _  -> vdq_suspect e
+    HsApp _ e _    ->
+      -- Don't care about the argument. Consider:
+      --   f (g Int)
+      -- Even though Int is a VDQ suspect, (g Int) is not.
+      vdq_suspect e
+    HsAppType _ e _ _ -> vdq_suspect e
+    OpApp _ _ e _ -> vdq_suspect e
+    NegApp _ e _ -> vdq_suspect e
+    SectionL _ e1 e2 -> any vdq_suspect [e1, e2]
+    SectionR _ e1 e2 -> any vdq_suspect [e1, e2]
+    ExplicitTuple _ tup_args _ ->
+      let go_tup_arg (Present _ e) = vdq_suspect e
+          go_tup_arg Missing{} = False
+      in any go_tup_arg tup_args
+    ExplicitList _ es -> any vdq_suspect es
+    ExprWithTySig _ e _ -> vdq_suspect e
+    HsPragE _ _ e -> vdq_suspect e
+    XExpr (HsExpanded e _) -> vdq_suspect (L l e)
+
+    -- Those constructs do not look like types, so the user
+    -- probably intended to use them as ordinary function arguments.
+    HsUnboundVar{} -> False
+    HsIPVar{}      -> False
+    HsOverLabel{}  -> False
+    HsLit{}        -> False
+    HsOverLit{}    -> False
+    ExplicitSum{}  -> False
+    HsLam{}        -> False
+    HsLamCase{}    -> False
+    HsCase{}       -> False
+    HsIf{}         -> False
+    HsMultiIf{}    -> False
+    HsLet{}        -> False
+    HsDo{}         -> False
+    RecordUpd{}    -> False
+    HsTypedSplice{}    -> False
+    HsUntypedSplice{}  -> False
+    HsTypedBracket{}   -> False
+    HsUntypedBracket{} -> False
+    HsProc{}       -> False
+    HsStatic{}     -> False
+    RecordCon{}    -> False
+    HsRecSel{}     -> False
+    HsProjection{} -> False
+    HsGetField{}   -> False
+    ArithSeq{}     -> False
 
 addArgCtxt :: AppCtxt -> LHsExpr GhcRn
            -> TcM a -> TcM a
@@ -741,6 +830,14 @@ tcVTA fun_ty hs_ty
   | otherwise
   = do { (_, fun_ty) <- zonkTidyTcType emptyTidyEnv fun_ty
        ; failWith $ TcRnInvalidTypeApplication fun_ty hs_ty }
+
+tc_vdq_arg
+  :: Kind
+  -> LHsExpr GhcRn
+  -> TcM Type
+tc_vdq_arg ki (L _ (HsPar _ _ e _)) = tc_vdq_arg ki e
+tc_vdq_arg ki (L _ (HsEmbTy _ _ hsty)) = tcHsTypeApp hsty ki
+tc_vdq_arg _ e = failWith $ TcRnIllformedTypeArgument e
 
 {- Note [Required quantifiers in the type of a term]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

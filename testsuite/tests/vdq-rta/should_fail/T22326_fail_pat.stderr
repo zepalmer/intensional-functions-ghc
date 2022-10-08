@@ -1,0 +1,4 @@
+
+T22326_fail_pat.hs:7:4: error: [GHC-88754]
+    Ill-formed type pattern: Int
+    Only variables and wildcards are allowed.

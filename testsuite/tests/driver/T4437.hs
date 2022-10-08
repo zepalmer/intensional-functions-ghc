@@ -39,6 +39,7 @@ expectedGhcOnlyExtensions :: [String]
 expectedGhcOnlyExtensions =
     [ "DeepSubsumption"
     , "TypeData"
+    , "RequiredTypeArguments"
     ]
 
 expectedCabalOnlyExtensions :: [String]

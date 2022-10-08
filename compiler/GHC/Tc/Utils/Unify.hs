@@ -173,7 +173,7 @@ matchActualFunTySigma herald mb_thing err_info fun_ty
 
     ------------
     mk_ctxt :: TcType -> TidyEnv -> TcM (TidyEnv, SDoc)
-    mk_ctxt res_ty env = mkFunTysMsg env herald (reverse arg_tys_so_far)
+    mk_ctxt res_ty env = mkFunTysMsg env herald [Anon t visArgTypeLike | t <- reverse arg_tys_so_far]
                                      res_ty n_val_args_in_call
     (n_val_args_in_call, arg_tys_so_far) = err_info
 
@@ -366,7 +366,7 @@ matchExpectedFunTys :: forall a.
                     -> UserTypeCtxt
                     -> Arity
                     -> ExpRhoType      -- Skolemised
-                    -> ([Scaled ExpSigmaTypeFRR] -> ExpRhoType -> TcM a)
+                    -> ([ExpPatType] -> ExpRhoType -> TcM a)
                     -> TcM (HsWrapper, a)
 -- If    matchExpectedFunTys n ty = (wrap, _)
 -- then  wrap : (t1 -> ... -> tn -> ty_r) ~> ty,
@@ -394,11 +394,17 @@ matchExpectedFunTys herald ctx arity orig_ty thing_inside
     go acc_arg_tys n ty
       | Just ty' <- coreView ty = go acc_arg_tys n ty'
 
+    go acc_arg_tys n ty
+      | (tvbs, ty') <- tcSplitForAllReqTVBinders ty
+      , not (null tvbs)
+      = let init_subst = mkEmptySubst (mkInScopeSet (tyCoVarsOfType ty))
+        in goVdq init_subst acc_arg_tys n ty (binderVars tvbs) ty'
+
     go acc_arg_tys n (FunTy { ft_af = af, ft_mult = mult, ft_arg = arg_ty, ft_res = res_ty })
       = assert (isVisibleFunArg af) $
         do { let arg_pos = 1 + length acc_arg_tys -- for error messages only
            ; (arg_co, arg_ty) <- hasFixedRuntimeRep (FRRExpectedFunTy herald arg_pos) arg_ty
-           ; (wrap_res, result) <- go ((Scaled mult $ mkCheckExpType arg_ty) : acc_arg_tys)
+           ; (wrap_res, result) <- go ((ExpFunPatTy $ Scaled mult $ mkCheckExpType arg_ty) : acc_arg_tys)
                                       (n-1) res_ty
            ; let wrap_arg = mkWpCastN arg_co
                  fun_wrap = mkWpFun wrap_arg wrap_res (Scaled mult arg_ty) res_ty
@@ -429,13 +435,27 @@ matchExpectedFunTys herald ctx arity orig_ty thing_inside
     go acc_arg_tys n ty = addErrCtxtM (mk_ctxt acc_arg_tys ty) $
                           defer acc_arg_tys n (mkCheckExpType ty)
 
+    goVdq subst acc_arg_tys n expected_ty tvs ty =
+      do { rec { (subst', tvs') <- tcInstSkolTyVarsX skol_info subst tvs
+               ; let tv_prs = map tyVarName tvs `zip` tvs'
+               ; skol_info <- mkSkolemInfo (SigSkol ctx expected_ty tv_prs) }
+         ; let m = length tvs'
+               forall_arg_tys = map ExpForallPatTy (reverse tvs')
+         ; (ev_binds, (wrap_res, result)) <-
+              checkConstraints (getSkolemInfo skol_info) tvs' [] $
+              go (forall_arg_tys ++ acc_arg_tys)
+                 (n - m)
+                 (substTy subst' ty)
+         ; let wrap_gen = mkWpTyLams tvs' <.> mkWpLet ev_binds
+         ; return (wrap_gen <.> wrap_res, result) }
+
     ------------
-    defer :: [Scaled ExpSigmaTypeFRR] -> Arity -> ExpRhoType -> TcM (HsWrapper, a)
+    defer :: [ExpPatType] -> Arity -> ExpRhoType -> TcM (HsWrapper, a)
     defer acc_arg_tys n fun_ty
       = do { let last_acc_arg_pos = length acc_arg_tys
            ; more_arg_tys <- mapM new_exp_arg_ty [last_acc_arg_pos + 1 .. last_acc_arg_pos + n]
            ; res_ty       <- newInferExpType
-           ; result       <- thing_inside (reverse acc_arg_tys ++ more_arg_tys) res_ty
+           ; result       <- thing_inside (reverse acc_arg_tys ++ map ExpFunPatTy more_arg_tys) res_ty
            ; more_arg_tys <- mapM (\(Scaled m t) -> Scaled m <$> readExpType t) more_arg_tys
            ; res_ty       <- readExpType res_ty
            ; let unif_fun_ty = mkScaledFunTys more_arg_tys res_ty
@@ -449,23 +469,27 @@ matchExpectedFunTys herald ctx arity orig_ty thing_inside
                  <*> newInferExpTypeFRR (FRRExpectedFunTy herald arg_pos)
 
     ------------
-    mk_ctxt :: [Scaled ExpSigmaTypeFRR] -> TcType -> TidyEnv -> TcM (TidyEnv, SDoc)
+    mk_ctxt :: [ExpPatType] -> TcType -> TidyEnv -> TcM (TidyEnv, SDoc)
     mk_ctxt arg_tys res_ty env
       = mkFunTysMsg env herald arg_tys' res_ty arity
       where
-        arg_tys' = map (\(Scaled u v) -> Scaled u (checkingExpType "matchExpectedFunTys" v)) $
-                   reverse arg_tys
+        arg_tys' = map prepare_arg_ty (reverse arg_tys)
+        prepare_arg_ty (ExpFunPatTy (Scaled u v)) = Anon (Scaled u (checkingExpType "matchExpectedFunTys" v)) visArgTypeLike
+        prepare_arg_ty (ExpForallPatTy tv) = Named (Bndr tv Required)
             -- this is safe b/c we're called from "go"
 
 mkFunTysMsg :: TidyEnv
             -> ExpectedFunTyOrigin
-            -> [Scaled TcType] -> TcType -> Arity
+            -> [PiTyBinder] -> TcType -> Arity
             -> TcM (TidyEnv, SDoc)
 mkFunTysMsg env herald arg_tys res_ty n_val_args_in_call
   = do { (env', fun_rho) <- zonkTidyTcType env $
-                            mkScaledFunTys arg_tys res_ty
+                            mkPiTys arg_tys res_ty
 
-       ; let (all_arg_tys, _) = splitFunTys fun_rho
+       ; let (all_arg_tys, _) = splitFunTys fun_rho  -- FIXME(int-index): split FunTys *and* VDQ
+                                                     -- TODO(int-index): also check if there's a pre-existing bug here.
+                                                     -- Does this split correctly something like a -> Num a => b -> ...?
+                                                     -- The correct strategy is probably to splitPiTys and filter the visible ones.
              n_fun_args = length all_arg_tys
 
              msg | n_val_args_in_call <= n_fun_args  -- Enough args, in the end

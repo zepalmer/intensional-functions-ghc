@@ -1402,6 +1402,9 @@ zonk_pat env (NPlusKPat ty (L loc n) (L l lit1) lit2 e1 e2)
         ; ty' <- zonkTcTypeToTypeX env2 ty
         ; return (extendIdZonkEnv env2 n',
                   NPlusKPat ty' (L loc n') (L l lit1') lit2' e1' e2') }
+
+zonk_pat env (EmbTyPat ki toktype lty) = return (env, EmbTyPat ki toktype lty) -- FIXME (int-index): actual zonking
+
 zonk_pat env (XPat ext) = case ext of
   { ExpansionPat orig pat->
     do { (env, pat') <- zonk_pat env pat

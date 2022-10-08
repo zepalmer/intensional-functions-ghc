@@ -364,11 +364,10 @@ instance Diagnostic TcRnMessage where
            , hang (text "where the body of the forall has this kind:")
                 2 (quotes (pprKind kind)) ]
     TcRnVDQInTermType mb_ty
-      -> mkSimpleDecorated $ vcat
-           [ case mb_ty of
+      -> mkSimpleDecorated $
+             case mb_ty of
                Nothing -> main_msg
                Just ty -> hang (main_msg <> char ':') 2 (pprType ty)
-           , text "(GHC does not yet support this)" ]
       where
         main_msg =
           text "Illegal visible, dependent quantification" <+>
@@ -1223,6 +1222,31 @@ instance Diagnostic TcRnMessage where
     TcRnSectionWithoutParentheses expr -> mkSimpleDecorated $
       hang (text "A section must be enclosed in parentheses")
          2 (text "thus:" <+> (parens (ppr expr)))
+    TcRnIllformedTypePattern (Left p)
+      -> mkSimpleDecorated $
+          hang (text "Ill-formed type pattern:") 2 (ppr p) $$
+          text "Expected a type pattern introduced with the"
+            <+> quotes (text "type") <+> text "keyword."
+    TcRnIllformedTypePattern (Right ty)
+      -> mkSimpleDecorated $
+          hang (text "Ill-formed type pattern:") 2 (ppr ty) $$
+          text "Only variables and wildcards are allowed."
+    TcRnIllegalTypePattern
+      -> mkSimpleDecorated $
+          text "Illegal type pattern." $$
+          text "A type pattern must be checked against a visible forall."
+    TcRnIllegalTyVarInPat name
+      -> mkSimpleDecorated $
+          text "Illegal type variable binding in a pattern:" <+> quotes (ppr name)
+    TcRnIllformedTypeArgument e
+      -> mkSimpleDecorated $
+          hang (text "Ill-formed type argument:") 2 (ppr e) $$
+          text "Expected a type expression introduced with the"
+            <+> quotes (text "type") <+> text "keyword."
+    TcRnIllegalTypeExpr
+      -> mkSimpleDecorated $
+          text "Illegal type expression." $$
+          text "A type expression must be used to instantiate a visible forall."
 
 
   diagnosticReason = \case
@@ -1628,6 +1652,16 @@ instance Diagnostic TcRnMessage where
       -> ErrorWithoutFlag
     TcRnIllegalTupleSection{}
       -> ErrorWithoutFlag
+    TcRnIllformedTypePattern{}
+      -> ErrorWithoutFlag
+    TcRnIllegalTypePattern{}
+      -> ErrorWithoutFlag
+    TcRnIllegalTyVarInPat{}
+      -> ErrorWithoutFlag
+    TcRnIllformedTypeArgument{}
+      -> ErrorWithoutFlag
+    TcRnIllegalTypeExpr{}
+      -> ErrorWithoutFlag
 
   diagnosticHints = \case
     TcRnUnknownMessage m
@@ -1734,7 +1768,7 @@ instance Diagnostic TcRnMessage where
     TcRnForAllEscapeError{}
       -> noHints
     TcRnVDQInTermType{}
-      -> noHints
+      -> [suggestExtension LangExt.RequiredTypeArguments]
     TcRnBadQuantPredHead{}
       -> noHints
     TcRnIllegalTupleConstraint{}
@@ -2037,6 +2071,16 @@ instance Diagnostic TcRnMessage where
       -> noHints
     TcRnIllegalTupleSection{}
       -> [suggestExtension LangExt.TupleSections]
+    TcRnIllformedTypePattern{}
+      -> noHints
+    TcRnIllegalTypePattern{}
+      -> noHints
+    TcRnIllegalTyVarInPat{}
+      -> [suggestExtension LangExt.ScopedTypeVariables]
+    TcRnIllformedTypeArgument{}
+      -> noHints
+    TcRnIllegalTypeExpr{}
+      -> noHints
 
 
   diagnosticCode = constructorCode

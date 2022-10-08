@@ -171,10 +171,9 @@ tc_eq_type keep_syns vis_only orig_ty1 orig_ty2
     go _   (LitTy lit1) (LitTy lit2)
       = lit1 == lit2
 
-    go env (ForAllTy (Bndr tv1 vis1) ty1)
-           (ForAllTy (Bndr tv2 vis2) ty2)
-      =  vis1 `eqForAllVis` vis2
-      && (vis_only || go env (varType tv1) (varType tv2))
+    go env (ForAllTy (Bndr tv1 _) ty1)
+           (ForAllTy (Bndr tv2 _) ty2)
+      =  (vis_only || go env (varType tv1) (varType tv2))
       && go (rnBndr2 env tv1 tv2) ty1 ty2
 
     -- Make sure we handle all FunTy cases since falling through to the
@@ -513,9 +512,8 @@ nonDetCmpTypeX env orig_t1 orig_t2 =
 
     go env (TyVarTy tv1)       (TyVarTy tv2)
       = liftOrdering $ rnOccL env tv1 `nonDetCmpVar` rnOccR env tv2
-    go env (ForAllTy (Bndr tv1 vis1) t1) (ForAllTy (Bndr tv2 vis2) t2)
-      = liftOrdering (vis1 `cmpForAllVis` vis2)
-        `thenCmpTy` go env (varType tv1) (varType tv2)
+    go env (ForAllTy (Bndr tv1 _) t1) (ForAllTy (Bndr tv2 _) t2)
+      = go env (varType tv1) (varType tv2)
         `thenCmpTy` go (rnBndr2 env tv1 tv2) t1 t2
 
         -- See Note [Equality on AppTys]

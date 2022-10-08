@@ -157,6 +157,12 @@ type instance XSigPat GhcPs = EpAnn [AddEpAnn]
 type instance XSigPat GhcRn = NoExtField
 type instance XSigPat GhcTc = Type
 
+type instance XEmbTyPat GhcPs = NoExtField
+type instance XEmbTyPat GhcRn = Maybe (LocatedN Name)
+  -- Name of the bound variable (Nothing if wildcard)
+type instance XEmbTyPat GhcTc = (Maybe (LocatedN Name), Kind)
+  -- The kind of the type pattern for use in hsPatType.
+
 type instance XXPat GhcPs = DataConCantHappen
 type instance XXPat GhcRn = HsPatExpansion (Pat GhcRn) (Pat GhcRn)
   -- Original pattern and its desugaring/expansion.
@@ -378,6 +384,7 @@ pprPat (ConPat { pat_con = con
                        , cpt_dicts = dicts
                        , cpt_binds = binds
                        } = ext
+pprPat (EmbTyPat _ toktype ty) = ppr toktype <+> ppr ty
 
 pprPat (XPat ext) = case ghcPass @p of
 #if __GLASGOW_HASKELL__ < 811
@@ -590,6 +597,12 @@ isIrrefutableHsPat' is_strict = goL
     -- since we cannot know until the splice is evaluated.
     go (SplicePat {})      = False
 
+    -- In theory, EmbTyPat is irrefutable because it simply binds a type
+    -- variable. In practice, the value we return here is inconsequential,
+    -- as isIrrefutableHsPat is only called in contexts where EmbTyPat will
+    -- be rejected for other reasons (test case: T22326_fail_ado).
+    go (EmbTyPat {})       = True
+
     go (XPat ext)          = case ghcPass @p of
 #if __GLASGOW_HASKELL__ < 811
       GhcPs -> dataConCantHappen ext
@@ -653,6 +666,7 @@ patNeedsParens p = go @p
                          = conPatNeedsParens p ds
     go (SigPat {})       = p >= sigPrec
     go (ViewPat {})      = True
+    go (EmbTyPat {})     = True
     go (XPat ext)        = case ghcPass @q of
 #if __GLASGOW_HASKELL__ < 901
       GhcPs -> dataConCantHappen ext

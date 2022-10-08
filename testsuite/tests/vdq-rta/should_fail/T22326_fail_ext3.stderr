@@ -1,0 +1,4 @@
+
+T22326_fail_ext3.hs:9:4: error: [GHC-13911]
+    Illegal type variable binding in a pattern: ‘t’
+    Suggested fix: Perhaps you intended to use ScopedTypeVariables

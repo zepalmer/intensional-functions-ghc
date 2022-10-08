@@ -96,6 +96,7 @@ module GHC.Parser.PostProcess (
         failOpFewArgs,
         failNotEnabledImportQualifiedPost,
         failImportQualifiedTwice,
+        requireExplicitNamespaces,
 
         SumOrTuple (..),
 
@@ -1592,6 +1593,8 @@ class (b ~ (Body b) GhcPs, AnnoBody b) => DisambECP b where
   -- | Disambiguate tuple sections and unboxed sums
   mkSumOrTuplePV
     :: SrcSpanAnnA -> Boxity -> SumOrTuple b -> [AddEpAnn] -> PV (LocatedA b)
+  -- | Disambiguate "type t" (embedded type)
+  mkHsEmbTyPV :: SrcSpan -> LHsToken "type" GhcPs -> LHsType GhcPs -> PV (LocatedA b)
   -- | Validate infixexp LHS to reject unwanted {-# SCC ... #-} pragmas
   rejectPragmaPV :: LocatedA b -> PV ()
 
@@ -1711,6 +1714,7 @@ instance DisambECP (HsCmd GhcPs) where
   mkHsBangPatPV l c _ = cmdFail l $
     text "!" <> ppr c
   mkSumOrTuplePV l boxity a _ = cmdFail (locA l) (pprSumOrTuple boxity a)
+  mkHsEmbTyPV l _ ty = cmdFail l (text "type" <+> ppr ty)
   rejectPragmaPV _ = return ()
 
 cmdFail :: SrcSpan -> SDoc -> PV a
@@ -1807,6 +1811,9 @@ instance DisambECP (HsExpr GhcPs) where
   mkHsBangPatPV l e   _ = addError (mkPlainErrorMsgEnvelope l $ PsErrBangPatWithoutSpace e)
                           >> return (L (noAnnSrcSpan l) (hsHoleExpr noAnn))
   mkSumOrTuplePV = mkSumOrTupleExpr
+  mkHsEmbTyPV l toktype ty =
+    return $ L (noAnnSrcSpan l) $
+      HsEmbTy noExtField toktype (mkHsWildCardBndrs ty)
   rejectPragmaPV (L _ (OpApp _ _ _ e)) =
     -- assuming left-associative parsing of operators
     rejectPragmaPV e
@@ -1897,6 +1904,9 @@ instance DisambECP (PatBuilder GhcPs) where
     hintBangPat l pb
     return $ L (noAnnSrcSpan l) (PatBuilderPat pb)
   mkSumOrTuplePV = mkSumOrTuplePat
+  mkHsEmbTyPV l toktype ty =
+    return $ L (noAnnSrcSpan l) $
+      PatBuilderPat (EmbTyPat noExtField toktype (mkHsWildCardBndrs ty))
   rejectPragmaPV _ = return ()
 
 -- | Ensure that a literal pattern isn't of type Addr#, Float#, Double#.
@@ -2837,9 +2847,7 @@ mkModuleImpExp anns (L l specname) subs = do
 mkTypeImpExp :: LocatedN RdrName   -- TcCls or Var name space
              -> P (LocatedN RdrName)
 mkTypeImpExp name =
-  do allowed <- getBit ExplicitNamespacesBit
-     unless allowed $ addError $ mkPlainErrorMsgEnvelope (getLocA name) $
-                                   PsErrIllegalExplicitNamespace
+  do requireExplicitNamespaces (getLocA name)
      return (fmap (`setRdrNameSpace` tcClsName) name)
 
 checkImportSpec :: LocatedL [LIE GhcPs] -> P (LocatedL [LIE GhcPs])
@@ -2889,6 +2897,12 @@ failOpFewArgs (L loc op) =
      ; let is_star_type = if star_is_type then StarIsType else StarIsNotType
      ; addFatalError $ mkPlainErrorMsgEnvelope (locA loc) $
          (PsErrOpFewArgs is_star_type op) }
+
+requireExplicitNamespaces :: MonadP m => SrcSpan -> m ()
+requireExplicitNamespaces l = do
+  allowed <- getBit ExplicitNamespacesBit
+  unless allowed $
+    addError $ mkPlainErrorMsgEnvelope l PsErrIllegalExplicitNamespace
 
 -----------------------------------------------------------------------------
 -- Misc utils

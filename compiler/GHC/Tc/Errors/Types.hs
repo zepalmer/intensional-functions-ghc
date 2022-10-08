@@ -2762,6 +2762,12 @@ data TcRnMessage where
   -}
   TcRnSectionWithoutParentheses :: HsExpr GhcPs -> TcRnMessage
 
+  TcRnIllformedTypePattern :: !(Either (Pat GhcRn) (LHsWcType GhcPs)) -> TcRnMessage
+  TcRnIllegalTypePattern :: TcRnMessage
+  TcRnIllegalTyVarInPat :: !Name -> TcRnMessage
+  TcRnIllformedTypeArgument :: !(LHsExpr GhcRn) -> TcRnMessage
+  TcRnIllegalTypeExpr :: TcRnMessage
+
   deriving Generic
 
 -- | Things forbidden in @type data@ declarations.

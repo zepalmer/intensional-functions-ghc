@@ -543,6 +543,10 @@ rnExpr (ArithSeq _ _ seq)
            else
             return (ArithSeq noExtField Nothing new_seq, fvs) }
 
+rnExpr (HsEmbTy _ toktype ty)
+  = do { (ty', fvs) <- rnHsWcType HsTypeCtx ty
+       ; return (HsEmbTy noExtField toktype ty', fvs) }
+
 {-
 ************************************************************************
 *                                                                      *
@@ -2262,6 +2266,12 @@ isStrictPattern (L loc pat) =
     NPat{}          -> True
     NPlusKPat{}     -> True
     SplicePat{}     -> True
+    EmbTyPat{}      ->
+        -- In theory, EmbTyPat is not strict because it simply binds a type
+        -- variable. In practice, the value we return here is inconsequential,
+        -- as isStrictPattern is only called in contexts where EmbTyPat will
+        -- be rejected for other reasons (test case: T22326_fail_ado).
+        False
     XPat ext        -> case ghcPass @p of
 #if __GLASGOW_HASKELL__ < 811
       GhcPs -> dataConCantHappen ext

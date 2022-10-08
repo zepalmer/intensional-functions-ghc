@@ -32,6 +32,8 @@ module GHC.Tc.Utils.TcType (
   ExpRhoType,
   mkCheckExpType,
 
+  ExpPatType(..),
+
   SyntaxOpType(..), synKnownType, mkSynFunTys,
 
   --------------------------------
@@ -501,6 +503,14 @@ instance Outputable InferResult where
 mkCheckExpType :: TcType -> ExpType
 mkCheckExpType = Check
 
+-- Expected type of a pattern in a lambda or a function left-hand side.
+data ExpPatType =
+    ExpFunPatTy    (Scaled ExpSigmaTypeFRR)   -- the type A of a function A -> B
+  | ExpForallPatTy TcTyVar                    -- the binder (a::A) of forall (a::A) -> B
+
+instance Outputable ExpPatType where
+  ppr (ExpFunPatTy t) = ppr t
+  ppr (ExpForallPatTy tv) = text "forall" <+> ppr tv
 
 {- *********************************************************************
 *                                                                      *

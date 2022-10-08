@@ -1042,6 +1042,22 @@ instance HiePass p => ToHie (PScoped (LocatedA (Pat (GhcPass p)))) where
                            sig
             HieRn -> pure []
         ]
+      EmbTyPat x _ _ ->
+        let
+          m_lname :: Maybe (LocatedN Name)  -- Name of the bound variable (Nothing if wildcard)
+          m_lname = case hiePass @p of
+            HieTc -> fst x
+            HieRn -> x
+        in
+          case m_lname of
+            Nothing -> []
+            Just lname ->
+              [
+                -- TODO (int-index): Does this do anything?
+                --       I created the HieVdq test case to find out,
+                --       but this line doesn't make any difference:
+                toHie $ C (PatternBind scope pscope rsp) lname
+              ]
       XPat e ->
         case hiePass @p of
           HieRn -> case e of
@@ -1205,6 +1221,9 @@ instance HiePass p => ToHie (LocatedA (HsExpr (GhcPass p))) where
         ]
       HsStatic _ expr ->
         [ toHie expr
+        ]
+      HsEmbTy _ _ ty ->
+        [ toHie $ TS (ResolvedScopes []) ty
         ]
       HsTypedBracket xbracket b -> case hiePass @p of
         HieRn ->

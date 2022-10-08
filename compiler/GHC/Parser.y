@@ -2115,7 +2115,7 @@ forall_telescope :: { Located (HsForAllTelescope GhcPs) }
 
 -- A ktype is a ctype, possibly with a kind annotation
 ktype :: { LHsType GhcPs }
-        : ctype                { $1 }
+        : ctype %shift         { $1 }
         | ctype '::' kind      {% acsA (\cs -> sLLAA $1 $> $ HsKindSig (EpAnn (glAR $1) [mu AnnDcolon $2] cs) $1 $3) }
 
 -- A ctype is a for-all type
@@ -2681,6 +2681,11 @@ exp   :: { ECP }
         -- See Note [%shift: exp -> infixexp]
         | infixexp %shift       { $1 }
         | exp_prag(exp)         { $1 } -- See Note [Pragmas and operator fixity]
+
+        -- Embed types into expressions and patterns for required type arguments
+        | 'type' ktype
+                {% do { requireExplicitNamespaces (getLoc $1)
+                      ; return $ ECP $ mkHsEmbTyPV (comb2 $1 (reLoc $>)) (hsTok $1) $2 } }
 
 infixexp :: { ECP }
         : exp10 { $1 }

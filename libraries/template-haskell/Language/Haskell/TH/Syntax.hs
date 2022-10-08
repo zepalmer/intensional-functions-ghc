@@ -2258,6 +2258,7 @@ data Pat
   | ListP [ Pat ]                   -- ^ @{ [1,2,3] }@
   | SigP Pat Type                   -- ^ @{ p :: t }@
   | ViewP Exp Pat                   -- ^ @{ e -> p }@
+  | TypeP Type                      -- ^ @{ type p }@
   deriving( Show, Eq, Ord, Data, Generic )
 
 type FieldPat = (Name,Pat)
@@ -2355,6 +2356,7 @@ data Exp
   | ImplicitParamVarE String           -- ^ @{ ?x }@ ( Implicit parameter )
   | GetFieldE Exp String               -- ^ @{ exp.field }@ ( Overloaded Record Dot )
   | ProjectionE (NonEmpty String)      -- ^ @(.x)@ or @(.x.y)@ (Record projections)
+  | TypeE Type                         -- ^ @{ type t }@
   deriving( Show, Eq, Ord, Data, Generic )
 
 type FieldExp = (Name,Exp)

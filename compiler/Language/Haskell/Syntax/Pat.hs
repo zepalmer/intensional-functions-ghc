@@ -219,6 +219,10 @@ data Pat p
 
     -- ^ Pattern with a type signature
 
+  | EmbTyPat        (XEmbTyPat p)
+                   !(LHsToken "type" p)
+                    (LHsWcType (NoGhcTc p))
+
   -- Extension point; see Note [Trees That Grow] in Language.Haskell.Syntax.Extension
   | XPat
       !(XXPat p)

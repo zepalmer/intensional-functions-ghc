@@ -3756,6 +3756,7 @@ xFlagsDeps = [
   depFlagSpecCond "RelaxedPolyRec"            LangExt.RelaxedPolyRec
     not
          "You can't turn off RelaxedPolyRec any more",
+  flagSpec "RequiredTypeArguments"            LangExt.RequiredTypeArguments,
   flagSpec "RoleAnnotations"                  LangExt.RoleAnnotations,
   flagSpec "ScopedTypeVariables"              LangExt.ScopedTypeVariables,
   flagSpec "StandaloneDeriving"               LangExt.StandaloneDeriving,

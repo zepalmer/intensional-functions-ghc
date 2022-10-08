@@ -1107,6 +1107,10 @@ tcPatToExpr name args pat = go pat
     go1 p@(AsPat {})                         = notInvertible p
     go1 p@(NPlusKPat {})                     = notInvertible p
 
+    go1 EmbTyPat{} = panic "tcPatToExpr: EmbTyPat"
+      -- This is impossible because we do not accept type patterns
+      -- in pattern synonyms.
+
     notInvertible p = Left (not_invertible_msg p)
 
     not_invertible_msg p

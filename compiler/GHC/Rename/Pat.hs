@@ -6,6 +6,7 @@
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE ViewPatterns        #-}
 {-# LANGUAGE DisambiguateRecordFields #-}
+{-# LANGUAGE DataKinds           #-}
 
 {-
 (c) The GRASP/AQUA Project, Glasgow University, 1992-1998
@@ -49,7 +50,7 @@ import GHC.Tc.Utils.Monad
 import GHC.Tc.Utils.Zonk   ( hsOverLitName )
 import GHC.Rename.Env
 import GHC.Rename.Fixity
-import GHC.Rename.Utils    ( newLocalBndrRn, bindLocalNames
+import GHC.Rename.Utils    ( newLocalBndrRn, bindLocalNames, bindLocalNamesFV
                            , warnUnusedMatches, newLocalBndrRn
                            , checkUnusedRecordWildcard
                            , checkDupNames, checkDupAndShadowedNames
@@ -619,6 +620,33 @@ rnPatAndThen mk (SplicePat _ splice)
                gParPat . (fmap (flip SplicePat rn_splice . HsUntypedSpliceTop mfs)) <$> rnLPatAndThen mk pat
            (rn_splice, HsUntypedSpliceNested splice_name) -> return (SplicePat (HsUntypedSpliceNested splice_name) rn_splice) -- Splice was nested and thus already renamed
        }
+
+rnPatAndThen mk (EmbTyPat _ toktype lty) = rnEmbTyPatAndThen mk toktype lty
+
+-- Only admits wildcards and type variables:
+--    f (type _) = ...
+--    f (type a) = ...
+--
+-- Other type forms are not allowed (see the proposal #281 "Visible forall"):
+--    f (type Int)       = ...  -- not allowed
+--    f (type a :: Type) = ...  -- also not allowed (to make impl easier, but could be added if users want it)
+rnEmbTyPatAndThen :: NameMaker -> LHsToken "type" GhcPs -> LHsWcType GhcPs -> CpsRn (Pat GhcRn)
+rnEmbTyPatAndThen _ toktype (HsWC _ (L l (HsWildCardTy _))) =
+  return $ EmbTyPat Nothing toktype (HsWC [] (L l (HsWildCardTy noExtField)))
+rnEmbTyPatAndThen _ toktype (HsWC _ (L l (HsTyVar _ NotPromoted lrdr)))
+  | isRdrTyVar (unLoc lrdr)
+  = liftCpsWithCont $ \thing_inside ->
+    do { nm <- newTyVarNameRn Nothing lrdr
+       ; let lnm = L (getLoc lrdr) nm
+       ; scoped_type_variables <- xoptM LangExt.ScopedTypeVariables
+       ; checkErr scoped_type_variables $ TcRnIllegalTyVarInPat nm
+       -- TODO (int-index): look at newPatName for inspiration on how to utilize the NameMaker
+       ; bindLocalNamesFV [nm] $
+         thing_inside $ EmbTyPat (Just lnm) toktype
+                      $ HsWC [] (L l (HsTyVar noAnn NotPromoted lnm))
+       }
+rnEmbTyPatAndThen _ _ lty =
+  liftCps $ failWith $ TcRnIllformedTypePattern (Right lty)
 
 --------------------
 rnConPatAndThen :: NameMaker

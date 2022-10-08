@@ -565,6 +565,10 @@ data HsExpr p
   -- Expressions annotated with pragmas, written as {-# ... #-}
   | HsPragE (XPragE p) (HsPragE p) (LHsExpr p)
 
+  | HsEmbTy   (XEmbTy p)
+             !(LHsToken "type" p)
+              (LHsWcType (NoGhcTc p))
+
   | XExpr       !(XXExpr p)
   -- Note [Trees That Grow] in Language.Haskell.Syntax.Extension for the
   -- general idea, and Note [Rebindable syntax and HsExpansion] in GHC.Hs.Expr

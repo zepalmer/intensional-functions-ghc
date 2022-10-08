@@ -566,6 +566,7 @@ isOkNoBindPattern (L _ pat) =
           TuplePat _ lps _ -> any lpatternContainsSplice lps
           SumPat _ lp _ _ -> lpatternContainsSplice lp
           ConPat _ _ cpd  -> any lpatternContainsSplice (hsConPatArgs cpd)
+          EmbTyPat{}      -> panic "patternContainsSplice: EmbTyPat" -- TODO(int-index): how do I trigger this code path?
           XPat (HsPatExpanded _orig new) -> patternContainsSplice new
 
 {- Note [Pattern bindings that bind no variables]

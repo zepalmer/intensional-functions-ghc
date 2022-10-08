@@ -1166,6 +1166,7 @@ collect_pat flag pat bndrs = case pat of
   SigPat _ pat _        -> collect_lpat flag pat bndrs
   XPat ext              -> collectXXPat @p flag ext bndrs
   SplicePat ext _       -> collectXSplicePat @p flag ext bndrs
+  EmbTyPat _ _ _        -> bndrs   -- TODO (int-index): do I need to return the type variable binder?
   -- See Note [Dictionary binders in ConPatOut]
   ConPat {pat_args=ps}  -> case flag of
     CollNoDictBinders   -> foldr (collect_lpat flag) bndrs (hsConPatArgs ps)

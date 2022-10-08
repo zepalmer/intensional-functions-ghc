@@ -1129,6 +1129,8 @@ cvtl e = wrapLA (cvt e)
                                          (L noSrcSpanA (DotFieldOcc noAnn (L noSrcSpanA (FieldLabelString (fsLit f))))) }
     cvt (ProjectionE xs) = return $ HsProjection noAnn $ fmap
                                          (L noSrcSpanA . DotFieldOcc noAnn . L noSrcSpanA . FieldLabelString  . fsLit) xs
+    cvt (TypeE t) = do { t' <- cvtType t
+                       ; return $ HsEmbTy noExtField noHsTok (mkHsWildCardBndrs t') }
 
 {- | #16895 Ensure an infix expression's operator is a variable/constructor.
 Consider this example:
@@ -1445,6 +1447,8 @@ cvtp (SigP p t)        = do { p' <- cvtPat p; t' <- cvtType t
                             ; return $ SigPat noAnn p' (mkHsPatSigType noAnn t') }
 cvtp (ViewP e p)       = do { e' <- cvtl e; p' <- cvtPat p
                             ; return $ ViewPat noAnn e' p'}
+cvtp (TypeP t)         = do { t' <- cvtType t
+                            ; return $ EmbTyPat noExtField noHsTok (mkHsWildCardBndrs t') }
 
 cvtPatFld :: (TH.Name, TH.Pat) -> CvtM (LHsRecField GhcPs (LPat GhcPs))
 cvtPatFld (s,p)
