@@ -412,19 +412,3 @@ instance (IntensionalFunctionMultiApplication
         (%@+) fn (NonEmptyHListCons arg1 $
                     NonEmptyHListCons arg2 $
                         NonEmptyHListSingleton arg3)
-
-{-
-f %@ x
-
-
-f %@ x %@ y
-f %@+ NonEmptyHListCons x (NonEmptyHListSingleton y)
-f %@+ x :%: y
-
-
-f %@ x %@ y %@ z
-f %@+ NonEmptyHListCons x (NonEmptyHListCons y (NonEmptyHListSingleton z))
-f %@+ x :%: y :%.: z
-
-f %@% (x,y,z)
--}

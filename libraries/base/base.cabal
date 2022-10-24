@@ -106,6 +106,7 @@ Library
         Control.Intensional.Applicative
         Control.Intensional.Functor
         Control.Intensional.Monad
+        Control.Intensional.MonadPlus
         Control.Intensional.Runtime
         Control.Intensional.Runtime.Constraints
         Control.Intensional.Runtime.IntensionalFunction
