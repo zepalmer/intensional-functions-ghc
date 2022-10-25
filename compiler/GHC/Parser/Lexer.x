@@ -755,6 +755,7 @@ data Token
   | ITjavascriptcallconv
   | ITmdo (Maybe FastString)
   | ITfamily
+  | ITone
   | ITrole
   | ITgroup
   | ITby
@@ -998,6 +999,7 @@ reservedWordsFM = listToUFM $
          ( "mdo",            ITmdo Nothing,   xbit RecursiveDoBit),
              -- See Note [Lexing type pseudo-keywords]
          ( "family",         ITfamily,        0 ),
+         ( "one",            ITone,           0),
          ( "role",           ITrole,          0 ),
          ( "pattern",        ITpattern,       xbit PatternSynonymsBit),
          ( "static",         ITstatic,        xbit StaticPointersBit ),
@@ -2903,6 +2905,7 @@ data ExtBits
   | NoLexicalNegationBit   -- See Note [Why not LexicalNegationBit]
   | OverloadedRecordDotBit
   | OverloadedRecordUpdateBit
+  | OrPatternsBit
 
   -- Flags that are updated once parsing starts
   | InRulePragBit
@@ -2982,6 +2985,7 @@ mkParserOpts extensionFlags diag_opts supported
       .|. NoLexicalNegationBit        `xoptNotBit` LangExt.LexicalNegation -- See Note [Why not LexicalNegationBit]
       .|. OverloadedRecordDotBit      `xoptBit` LangExt.OverloadedRecordDot
       .|. OverloadedRecordUpdateBit   `xoptBit` LangExt.OverloadedRecordUpdate  -- Enable testing via 'getBit OverloadedRecordUpdateBit' in the parser (RecordDotSyntax parsing uses that information).
+      .|. OrPatternsBit               `xoptBit` LangExt.OrPatterns
     optBits =
           HaddockBit        `setBitIf` isHaddock
       .|. RawTokenStreamBit `setBitIf` rawTokStream
