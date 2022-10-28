@@ -76,7 +76,6 @@ initSettings top_dir = do
       getToolSetting :: String -> ExceptT SettingsError m String
       getToolSetting key = expandToolDir useInplaceMinGW mtool_dir <$> getSetting key
   targetPlatformString <- getSetting "target platform string"
-  myExtraGccViaCFlags <- getSetting "GCC extra via C opts"
   cc_prog <- getToolSetting "C compiler command"
   cxx_prog <- getToolSetting "C++ compiler command"
   cc_args_str <- getToolSetting "C compiler flags"
@@ -204,7 +203,9 @@ initSettings top_dir = do
       , toolSettings_opt_lc      = []
       , toolSettings_opt_i       = []
 
-      , toolSettings_extraGccViaCFlags = words myExtraGccViaCFlags
+        -- ghc-toolchain ensures that the C compiler supports
+        -- these
+      , toolSettings_extraGccViaCFlags = ["-fwrapv", "-fno-builtin"]
       }
 
     , sTargetPlatform = platform
