@@ -12,7 +12,6 @@ module GHC.Linker.ExtraObj
    , mkNoteObjsToLinkIntoBinary
    , checkLinkInfo
    , getLinkInfo
-   , getCompilerInfo
    , ghcLinkInfoSectionName
    , ghcLinkInfoNoteName
    , platformSupportsSavingLinkOpts
@@ -52,7 +51,6 @@ mkExtraObj logger tmpfs dflags unit_state extn xs
  = do cFile <- newTempName logger tmpfs (tmpDir dflags) TFL_CurrentModule extn
       oFile <- newTempName logger tmpfs (tmpDir dflags) TFL_GhcSession "o"
       writeFile cFile xs
-      ccInfo <- liftIO $ getCompilerInfo logger dflags
       runCc Nothing logger tmpfs dflags
             ([Option        "-c",
               FileOption "" cFile,
@@ -60,7 +58,7 @@ mkExtraObj logger tmpfs dflags unit_state extn xs
               FileOption "" oFile]
               ++ if extn /= "s"
                     then cOpts
-                    else asmOpts ccInfo)
+                    else [])
       return oFile
     where
       -- Pass a different set of options to the C compiler depending one whether
@@ -69,14 +67,6 @@ mkExtraObj logger tmpfs dflags unit_state extn xs
       cOpts = map Option (picCCOpts dflags)
                     ++ map (FileOption "-I" . ST.unpack)
                             (unitIncludeDirs $ unsafeLookupUnit unit_state rtsUnit)
-
-      -- When compiling assembler code, we drop the usual C options, and if the
-      -- compiler is Clang, we add an extra argument to tell Clang to ignore
-      -- unused command line options. See trac #11684.
-      asmOpts ccInfo =
-            if any (ccInfo ==) [Clang, AppleClang, AppleClang51]
-                then [Option "-Qunused-arguments"]
-                else []
 
 -- When linking a binary, we need to create a C main() function that
 -- starts everything off.  This used to be compiled statically as part

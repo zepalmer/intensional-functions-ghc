@@ -291,14 +291,6 @@ runAsPhase with_cpp pipe_env hsc_env location input_fn = do
         let unit_env   = hsc_unit_env hsc_env
         let platform   = ue_platform unit_env
 
-        -- LLVM from version 3.0 onwards doesn't support the OS X system
-        -- assembler, so we use clang as the assembler instead. (#5636)
-        let (as_prog, get_asm_info) =
-                ( applyAssemblerProg $ backendAssemblerProg (backend dflags)
-                , applyAssemblerInfoGetter $ backendAssemblerInfoGetter (backend dflags)
-                )
-        asmInfo <- get_asm_info logger dflags platform
-
         let cmdline_include_paths = includePaths dflags
         let pic_c_flags = picCCOpts dflags
 
@@ -315,7 +307,7 @@ runAsPhase with_cpp pipe_env hsc_env location input_fn = do
                                 includePathsQuoteImplicit cmdline_include_paths]
         let runAssembler inputFilename outputFilename
               = withAtomicRename outputFilename $ \temp_outputFilename ->
-                    as_prog
+                    runAs
                        logger dflags
                        platform
                        (local_includes ++ global_includes
@@ -399,35 +391,6 @@ runForeignJsPhase pipe_env hsc_env _location input_fn = do
   output_fn <- phaseOutputFilenameNew StopLn pipe_env hsc_env Nothing
   embedJsFile logger dflags tmpfs unit_env input_fn output_fn
   return output_fn
-
-
-applyAssemblerInfoGetter
-    :: DefunctionalizedAssemblerInfoGetter
-    -> Logger -> DynFlags -> Platform -> IO CompilerInfo
-applyAssemblerInfoGetter StandardAssemblerInfoGetter logger dflags _platform =
-    getAssemblerInfo logger dflags
-applyAssemblerInfoGetter JSAssemblerInfoGetter _ _ _ =
-    pure Emscripten
-applyAssemblerInfoGetter DarwinClangAssemblerInfoGetter logger dflags platform =
-    if platformOS platform == OSDarwin then
-        pure Clang
-    else
-        getAssemblerInfo logger dflags
-
-applyAssemblerProg
-    :: DefunctionalizedAssemblerProg
-    -> Logger -> DynFlags -> Platform -> [Option] -> IO ()
-applyAssemblerProg StandardAssemblerProg logger dflags _platform =
-    runAs logger dflags
-applyAssemblerProg JSAssemblerProg logger dflags _platform =
-    runEmscripten logger dflags
-applyAssemblerProg DarwinClangAssemblerProg logger dflags platform =
-    if platformOS platform == OSDarwin then
-        runClang logger dflags
-    else
-        runAs logger dflags
-
-
 
 runCcPhase :: Phase -> PipeEnv -> HscEnv -> Maybe ModLocation -> FilePath -> IO FilePath
 runCcPhase cc_phase pipe_env hsc_env location input_fn = do

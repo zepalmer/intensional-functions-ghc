@@ -719,15 +719,6 @@ data DynFlags = DynFlags {
   avx512f               :: Bool, -- Enable AVX-512 instructions.
   avx512pf              :: Bool, -- Enable AVX-512 PreFetch Instructions.
 
-  -- | Run-time linker information (what options we need, etc.)
-  rtldInfo              :: IORef (Maybe LinkerInfo),
-
-  -- | Run-time C compiler information
-  rtccInfo              :: IORef (Maybe CompilerInfo),
-
-  -- | Run-time assembler information
-  rtasmInfo              :: IORef (Maybe CompilerInfo),
-
   -- Constants used to control the amount of optimization done.
 
   -- | Max size, in bytes, of inline array allocations.
@@ -1099,9 +1090,6 @@ setDynamicNow dflags0 =
 initDynFlags :: DynFlags -> IO DynFlags
 initDynFlags dflags = do
  let
- refRtldInfo <- newIORef Nothing
- refRtccInfo <- newIORef Nothing
- refRtasmInfo <- newIORef Nothing
  canUseUnicode <- do let enc = localeEncoding
                          str = "‘’"
                      (withCString enc str $ \cstr ->
@@ -1123,9 +1111,6 @@ initDynFlags dflags = do
         useColor      = useColor',
         canUseColor   = stderrSupportsAnsiColors,
         colScheme     = colScheme',
-        rtldInfo      = refRtldInfo,
-        rtccInfo      = refRtccInfo,
-        rtasmInfo     = refRtasmInfo,
         tmpDir        = TempDir tmp_dir
         }
 
@@ -1303,9 +1288,6 @@ defaultDynFlags mySettings =
         avx512er = False,
         avx512f = False,
         avx512pf = False,
-        rtldInfo = panic "defaultDynFlags: no rtldInfo",
-        rtccInfo = panic "defaultDynFlags: no rtccInfo",
-        rtasmInfo = panic "defaultDynFlags: no rtasmInfo",
 
         maxInlineAllocSize = 128,
         maxInlineMemcpyInsns = 32,
