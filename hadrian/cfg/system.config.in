@@ -172,7 +172,6 @@ target-has-gnu-nonexec-stack = @TargetHasGnuNonexecStack@
 target-has-ident-directive = @TargetHasIdentDirective@
 target-has-subsections-via-symbols = @TargetHasSubsectionsViaSymbols@
 target-has-rts-linker = @TargetHasRTSLinker@
-target-has-libm = @TargetHasLibm@
 target-arm-version    = @ARM_ISA@
 
 # Include and library directories:
@@ -193,21 +192,7 @@ use-system-ffi    = @UseSystemLibFFI@
 ffi-include-dir   = @FFIIncludeDir@
 ffi-lib-dir       = @FFILibDir@
 
-libdw-include-dir   = @LibdwIncludeDir@
-libdw-lib-dir       = @LibdwLibDir@
-
-libnuma-include-dir   = @LibNumaIncludeDir@
-libnuma-lib-dir       = @LibNumaLibDir@
-
 # Optional Dependencies:
 #=======================
 
 use-lib-dw        = @UseLibdw@
-use-lib-numa      = @UseLibNuma@
-use-lib-mingw-ex  = @HaveLibMingwEx@
-use-lib-m         = @UseLibm@
-use-lib-rt        = @UseLibrt@
-use-lib-dl        = @UseLibdl@
-use-lib-bfd       = @UseLibbfd@
-use-lib-pthread   = @UseLibpthread@
-need-libatomic    = @NeedLibatomic@

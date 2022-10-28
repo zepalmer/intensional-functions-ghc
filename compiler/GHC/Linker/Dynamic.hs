@@ -3,8 +3,6 @@
 -- | Dynamic linker
 module GHC.Linker.Dynamic
    ( linkDynLib
-   -- * Platform-specifics
-   , libmLinkOpts
    )
 where
 
@@ -214,7 +212,6 @@ linkDynLib logger tmpfs dflags0 unit_env o_files dep_packages
 
             runLink logger tmpfs dflags (
                     map Option verbFlags
-                 ++ libmLinkOpts platform
                  ++ [ Option "-o"
                     , FileOption "" output_fn
                     ]
@@ -229,13 +226,6 @@ linkDynLib logger tmpfs dflags0 unit_env o_files dep_packages
                  ++ map Option pkg_lib_path_opts
                  ++ map Option pkg_link_opts
               )
-
--- | Some platforms require that we explicitly link against @libm@ if any
--- math-y things are used (which we assume to include all programs). See #14022.
-libmLinkOpts :: Platform -> [Option]
-libmLinkOpts platform
-  | platformHasLibm platform = [Option "-lm"]
-  | otherwise                = []
 
 {-
 Note [-Bsymbolic assumptions by GHC]

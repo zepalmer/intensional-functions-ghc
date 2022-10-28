@@ -28,32 +28,9 @@ source-repository head
     location: https://gitlab.haskell.org/ghc/ghc.git
     subdir:   rts
 
-flag libm
-  default: @CabalHaveLibm@
-flag librt
-  default: @CabalHaveLibrt@
-flag libdl
-  default: @CabalHaveLibdl@
+-- Configuration
 flag use-system-libffi
-  default: @CabalUseSystemLibFFI@
-flag libffi-adjustors
-  default: @CabalLibffiAdjustors@
-flag need-pthread
-  default: @CabalNeedLibpthread@
-flag libbfd
-  default: @CabalHaveLibbfd@
-flag mingwex
-  default: @CabalMingwex@
-flag need-atomic
-  default: @CabalNeedLibatomic@
-flag libdw
-  default: @CabalHaveLibdw@
-flag libnuma
-  default: @CabalHaveLibNuma@
-flag 64bit
-  default: @Cabal64bit@
-flag leading-underscore
-  default: @CabalLeadingUnderscore@
+  description: Use the system's libffi library rather than GHC's internally built library.
 flag smp
   default: True
 flag find-ptr
@@ -177,13 +154,6 @@ library
          -- that it is ordered correctly with libpthread, since ghc-prim.cabal
          -- also explicitly lists libc. See #19029.
          extra-libraries: c
-      if flag(libm)
-         -- for ldexp()
-         extra-libraries: m
-      if flag(librt)
-         extra-libraries: rt
-      if flag(libdl)
-         extra-libraries: dl
       if flag(use-system-libffi)
          extra-libraries: ffi
       if os(windows)
@@ -203,22 +173,8 @@ library
          -- and also centralizes the versioning.
          cpp-options: -D_WIN32_WINNT=0x06010000
          cc-options: -D_WIN32_WINNT=0x06010000
-      if flag(need-pthread)
-         -- for pthread_getthreadid_np, pthread_create, ...
-         extra-libraries: pthread
-      if flag(need-atomic)
-         -- for sub-word-sized atomic operations (#19119)
-         extra-libraries: atomic
-      if flag(libbfd)
-         -- for debugging
-         extra-libraries: bfd iberty
-      if flag(mingwex)
+      if os(windows)
          extra-libraries: mingwex
-      if flag(libdw)
-         -- for backtraces
-         extra-libraries: elf dw
-      if flag(libnuma)
-         extra-libraries: numa
       if !flag(smp)
          cpp-options: -DNOSMP
 
@@ -297,8 +253,6 @@ library
 
       if os(osx)
         ld-options: "-Wl,-search_paths_first"
-                    -- See Note [fd_set_overflow]
-                    "-Wl,-U,___darwin_check_fd_set_overflow"
         if !arch(x86_64) && !arch(aarch64)
            ld-options: -read_only_relocs warning
 
@@ -314,27 +268,6 @@ library
                    Updates.cmm
                    -- AutoApply is generated
                    AutoApply.cmm
-
-      -- Adjustor stuff
-      if flag(libffi-adjustors)
-        c-sources: adjustor/LibffiAdjustor.c
-      else
-        -- Use GHC's native adjustors
-        if arch(i386)
-          asm-sources: adjustor/Nativei386Asm.S
-          c-sources: adjustor/Nativei386.c
-        if arch(x86_64)
-          if os(mingw32)
-            asm-sources: adjustor/NativeAmd64MingwAsm.S
-            c-sources: adjustor/NativeAmd64Mingw.c
-          else
-            asm-sources: adjustor/NativeAmd64Asm.S
-            c-sources: adjustor/NativeAmd64.c
-        if arch(ppc) || arch(ppc64)
-          asm-sources: AdjustorAsm.S
-          c-sources: adjustor/NativePowerPC.c
-        if arch(ia64)
-          c-sources: adjustor/NativeIA64.c
 
       -- Use assembler STG entrypoint on architectures where it is used
       if arch(ppc) || arch(ppc64) || arch(s390x) || arch(riscv64) || arch(loongarch64)

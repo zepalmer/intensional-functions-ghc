@@ -32,6 +32,9 @@
 #if defined(netbsd_HOST_OS)
 #define _NETBSD_SOURCE 1
 #endif
+#if defined(linux_HOST_OS)
+#define _GNU_SOURCE 1
+#endif
 
 #include "Rts.h"
 

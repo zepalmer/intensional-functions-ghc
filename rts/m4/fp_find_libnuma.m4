@@ -27,7 +27,7 @@ AC_DEFUN([FP_FIND_LIBNUMA],
     [],
     [enable_numa=auto])
 
-  UseLibNuma=NO
+  HaveLibNuma=0
   if test "$enable_numa" != "no" ; then
     CFLAGS2="$CFLAGS"
     CFLAGS="$LIBNUMA_CFLAGS $CFLAGS"
@@ -37,13 +37,15 @@ AC_DEFUN([FP_FIND_LIBNUMA],
     AC_CHECK_HEADERS([numa.h numaif.h])
 
     if test "x:$ac_cv_header_numa_h:$ac_cv_header_numaif_h" = "x:yes:yes" ; then
-      AC_CHECK_LIB([numa], [numa_available], [UseLibNuma=YES])
+      AC_CHECK_LIB([numa], [numa_available], [HaveLibNuma=1])
     fi
-    if test "x:$enable_numa:$UseLibNuma" = "x:yes:NO" ; then
+    if test "x:$enable_numa:$HaveLibNuma" = "x:yes:0" ; then
       AC_MSG_ERROR([Cannot find system libnuma (required by --enable-numa)])
     fi
 
     CFLAGS="$CFLAGS2"
     LDFLAGS="$LDFLAGS2"
   fi
+
+  AC_DEFINE_UNQUOTED([HAVE_LIBNUMA], [$HaveLibNuma], [Define to 1 if you have libnuma])
 ])

@@ -24,7 +24,6 @@ import GHC.Utils.TmpFs
 
 import GHC.Linker.MacOS
 import GHC.Linker.Unit
-import GHC.Linker.Dynamic
 import GHC.Linker.ExtraObj
 import GHC.Linker.Windows
 import GHC.Linker.Static.Utils
@@ -195,7 +194,6 @@ linkBinary' staticLink logger tmpfs dflags unit_env o_files dep_units = do
                       ++ [ GHC.SysTools.Option "-o"
                          , GHC.SysTools.FileOption "" output_fn
                          ]
-                      ++ libmLinkOpts platform
                       ++ map GHC.SysTools.Option (
                          []
 

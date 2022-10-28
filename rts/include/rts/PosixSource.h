@@ -37,6 +37,8 @@
 #define _XOPEN_SOURCE   700
 #endif
 
+#define _GNU_SOURCE 1
+
 #if defined(mingw32_HOST_OS)
 #  if defined(__USE_MINGW_ANSI_STDIO)
 #    if __USE_MINGW_ANSI_STDIO != 1

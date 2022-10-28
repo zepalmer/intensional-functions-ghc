@@ -28,10 +28,10 @@
 #include "linker/util.h"
 #include "linker/elf_util.h"
 
-#include <link.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <link.h>
 #if defined(HAVE_DLFCN_H)
 #include <dlfcn.h>
 #endif

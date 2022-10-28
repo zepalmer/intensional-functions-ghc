@@ -79,10 +79,6 @@ data Platform = Platform
       -- ^ Determines whether we will be compiling info tables that reside just
       --   before the entry code, or with an indirection to the entry code. See
       --   TABLES_NEXT_TO_CODE in rts/include/rts/storage/InfoTables.h.
-   , platformHasLibm                  :: !Bool
-      -- ^ Some platforms require that we explicitly link against @libm@ if any
-      -- math-y things are used (which we assume to include all programs). See
-      -- #14022.
 
    , platform_constants               :: !(Maybe PlatformConstants)
       -- ^ Constants such as structure offsets, type sizes, etc.
@@ -136,7 +132,6 @@ genericPlatform = Platform
    , platformHasGnuNonexecStack      = False
    , platformHasIdentDirective       = False
    , platformHasSubsectionsViaSymbols= False
-   , platformHasLibm                 = False
    , platformIsCrossCompiling        = False
    , platformLeadingUnderscore       = False
    , platformTablesNextToCode        = True

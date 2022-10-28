@@ -21,18 +21,10 @@ bootstrap_target=@TargetPlatform@
 TargetHasRTSLinker=@TargetHasRTSLinker@
 AC_SUBST(TargetHasRTSLinker)
 
-TargetHasLibm=@TargetHasLibm@
-AC_SUBST(TargetHasLibm)
-
 FFIIncludeDir=@FFIIncludeDir@
 FFILibDir=@FFILibDir@
 AC_SUBST(FFILibDir)
 AC_SUBST(FFIIncludeDir)
-
-LibdwIncludeDir=@LibdwIncludeDir@
-LibdwLibDir=@LibdwLibDir@
-AC_SUBST(LibdwLibDir)
-AC_SUBST(LibdwIncludeDir)
 
 UseLibffiForAdjustors=@UseLibffiForAdjustors@
 AC_SUBST(UseLibffiForAdjustors)

@@ -844,71 +844,18 @@ dnl    off_t, because it will affect the result of that test.
 AC_SYS_LARGEFILE
 
 dnl ** check for specific header (.h) files that we are interested in
-AC_CHECK_HEADERS([ctype.h dirent.h dlfcn.h errno.h fcntl.h grp.h limits.h locale.h nlist.h pthread.h pwd.h signal.h sys/param.h sys/mman.h sys/resource.h sys/select.h sys/time.h sys/timeb.h sys/timerfd.h sys/timers.h sys/times.h sys/utsname.h sys/wait.h termios.h utime.h windows.h winsock.h sched.h])
-
-dnl sys/cpuset.h needs sys/param.h to be included first on FreeBSD 9.1; #7708
-AC_CHECK_HEADERS([sys/cpuset.h], [], [],
-[[#if HAVE_SYS_PARAM_H
-# include <sys/param.h>
-#endif
-]])
-
-dnl ** check whether a declaration for `environ` is provided by libc.
-FP_CHECK_ENVIRON
 
 dnl ** do we have long longs?
 AC_CHECK_TYPES([long long])
 
 dnl ** what are the sizes of various types
-FP_CHECK_SIZEOF_AND_ALIGNMENT(char)
-FP_CHECK_SIZEOF_AND_ALIGNMENT(double)
-FP_CHECK_SIZEOF_AND_ALIGNMENT(float)
-FP_CHECK_SIZEOF_AND_ALIGNMENT(int)
-FP_CHECK_SIZEOF_AND_ALIGNMENT(long)
-if test "$ac_cv_type_long_long" = yes; then
-FP_CHECK_SIZEOF_AND_ALIGNMENT(long long)
-fi
-FP_CHECK_SIZEOF_AND_ALIGNMENT(short)
-FP_CHECK_SIZEOF_AND_ALIGNMENT(unsigned char)
-FP_CHECK_SIZEOF_AND_ALIGNMENT(unsigned int)
-FP_CHECK_SIZEOF_AND_ALIGNMENT(unsigned long)
-if test "$ac_cv_type_long_long" = yes; then
-FP_CHECK_SIZEOF_AND_ALIGNMENT(unsigned long long)
-fi
-FP_CHECK_SIZEOF_AND_ALIGNMENT(unsigned short)
-FP_CHECK_SIZEOF_AND_ALIGNMENT(void *)
-
-FP_CHECK_SIZEOF_AND_ALIGNMENT(int8_t)
-FP_CHECK_SIZEOF_AND_ALIGNMENT(uint8_t)
-FP_CHECK_SIZEOF_AND_ALIGNMENT(int16_t)
-FP_CHECK_SIZEOF_AND_ALIGNMENT(uint16_t)
-FP_CHECK_SIZEOF_AND_ALIGNMENT(int32_t)
-FP_CHECK_SIZEOF_AND_ALIGNMENT(uint32_t)
-FP_CHECK_SIZEOF_AND_ALIGNMENT(int64_t)
-FP_CHECK_SIZEOF_AND_ALIGNMENT(uint64_t)
-
-
 dnl for use in settings file
+FP_CHECK_SIZEOF_AND_ALIGNMENT(void *)
 TargetWordSize=$ac_cv_sizeof_void_p
-if test "x$TargetWordSize" = x8; then
-  AC_SUBST([Cabal64bit],[True])
-else
-  AC_SUBST([Cabal64bit],[False])
-fi
 AC_SUBST(TargetWordSize)
 
 AC_C_BIGENDIAN([TargetWordBigEndian=YES],[TargetWordBigEndian=NO])
 AC_SUBST(TargetWordBigEndian)
-
-FP_CHECK_FUNC([WinExec],
-  [@%:@include <windows.h>], [WinExec("",0)])
-
-FP_CHECK_FUNC([GetModuleFileName],
-  [@%:@include <windows.h>], [GetModuleFileName((HMODULE)0,(LPTSTR)0,0)])
-
-dnl ** check for more functions
-dnl ** The following have been verified to be used in ghc/, but might be used somewhere else, too.
-AC_CHECK_FUNCS([getclock getrusage gettimeofday setitimer siginterrupt sysconf times ctime_r sched_setaffinity sched_getaffinity setlocale uselocale])
 
 dnl ** On OS X 10.4 (at least), time.h doesn't declare ctime_r if
 dnl ** _POSIX_C_SOURCE is defined
@@ -917,40 +864,6 @@ AC_CHECK_DECLS([ctime_r], , ,
 #define _POSIX_C_SOURCE 199506L
 #include <time.h>])
 
-dnl On Linux we should have program_invocation_short_name
-AC_CHECK_DECLS([program_invocation_short_name], , ,
-[#define _GNU_SOURCE 1
-#include <errno.h>])
-
-dnl ** check for mingwex library
-AC_CHECK_LIB(
-  [mingwex],
-  [closedir],
-  [AC_SUBST([HaveLibMingwEx],[YES])] [AC_SUBST([CabalMingwex],[True])],
-  [AC_SUBST([HaveLibMingwEx],[NO])] [AC_SUBST([CabalMingwex],[False])])
-
-if test $HaveLibMingwEx = YES ; then
-  AC_DEFINE([HAVE_MINGWEX], [1], [Define to 1 if you have the mingwex library.])
-fi
-
-dnl ** check for math library
-dnl    Keep that check as early as possible.
-dnl    as we need to know whether we need libm
-dnl    for math functions or not
-dnl    (see https://gitlab.haskell.org/ghc/ghc/issues/3730)
-AC_CHECK_LIB(m, atan, HaveLibM=YES, HaveLibM=NO)
-if test $HaveLibM = YES
-then
-  AC_DEFINE([HAVE_LIBM], [1], [Define to 1 if you need to link with libm])
-  AC_SUBST([UseLibm],[YES])
-else
-  AC_SUBST([UseLibm],[NO])
-fi
-TargetHasLibm=$HaveLibM
-AC_SUBST(TargetHasLibm)
-
-FP_BFD_SUPPORT
-
 dnl ################################################################
 dnl Check for libraries
 dnl ################################################################
@@ -958,12 +871,16 @@ dnl ################################################################
 FP_FIND_LIBFFI
 AC_SUBST(UseSystemLibFFI)
 
-dnl ** check whether we need -ldl to get dlopen()
-AC_CHECK_LIB([dl], [dlopen])
-AC_CHECK_LIB([dl], [dlopen], HaveLibdl=YES, HaveLibdl=NO)
-AC_SUBST([UseLibdl],[$HaveLibdl])
-dnl ** check whether we have dlinfo
-AC_CHECK_FUNCS([dlinfo])
+AC_ARG_ENABLE(libffi-adjustors,
+  [AS_HELP_STRING(
+      [--enable-libffi-adjustors],
+      [Force use of libffi for adjustors, even on platforms which have support for more efficient, native adjustors.])],
+  UseLibffiForAdjustors=$enableval,
+  dnl do nothing
+)
+UseLibffiForAdjustors=NO dnl TODO
+
+AC_SUBST([UseLibffiForAdjustors])
 
 dnl --------------------------------------------------
 dnl * Miscellaneous feature tests
@@ -986,27 +903,8 @@ dnl ** check for leading underscores in symbol names
 FP_LEADING_UNDERSCORE
 AC_SUBST([LeadingUnderscore], [`echo $fptools_cv_leading_underscore | sed 'y/yesno/YESNO/'`])
 if test x"$fptools_cv_leading_underscore" = xyes; then
-   AC_SUBST([CabalLeadingUnderscore],[True])
    AC_DEFINE([LEADING_UNDERSCORE], [1], [Define to 1 if C symbols have a leading underscore added by the compiler.])
-else
-   AC_SUBST([CabalLeadingUnderscore],[False])
 fi
-
-FP_VISIBILITY_HIDDEN
-
-FP_MUSTTAIL
-
-dnl ** check for librt
-AC_CHECK_LIB([rt], [clock_gettime])
-AC_CHECK_LIB([rt], [clock_gettime], HaveLibrt=YES, HaveLibrt=NO)
-if test $HaveLibrt = YES
-then
-  AC_SUBST([UseLibrt],[YES])
-else
-  AC_SUBST([UseLibrt],[NO])
-fi
-AC_CHECK_FUNCS(clock_gettime timer_settime)
-FP_CHECK_TIMER_CREATE
 
 dnl ** check for Apple's "interesting" long double compatibility scheme
 AC_MSG_CHECKING(for printf\$LDBLStub)
@@ -1022,116 +920,10 @@ AC_LINK_IFELSE([AC_LANG_CALL([], [printf\$LDBLStub])],
             [Define to 1 if we have printf$LDBLStub (Apple Mac OS >= 10.4, PPC).])
     ])
 
-FP_CHECK_PTHREADS
-
 dnl ** check for eventfd which is needed by the I/O manager
 AC_CHECK_HEADERS([sys/eventfd.h])
 AC_CHECK_FUNCS([eventfd])
 
-AC_CHECK_FUNCS([getpid getuid raise])
-
-dnl ** Check for __thread support in the compiler
-AC_MSG_CHECKING(for __thread support)
-AC_COMPILE_IFELSE(
-  [ AC_LANG_SOURCE([[__thread int tester = 0;]]) ],
-  [
-   AC_MSG_RESULT(yes)
-   AC_DEFINE([CC_SUPPORTS_TLS],[1],[Define to 1 if __thread is supported])
-  ],
-  [
-   AC_MSG_RESULT(no)
-   AC_DEFINE([CC_SUPPORTS_TLS],[0],[Define to 1 if __thread is supported])
-  ])
-
-dnl large address space support (see rts/include/rts/storage/MBlock.h)
-dnl
-dnl Darwin has vm_allocate/vm_protect
-dnl Linux has mmap(MAP_NORESERVE)/madv(MADV_DONTNEED)
-dnl FreeBSD, Solaris and maybe other have MAP_NORESERVE/MADV_FREE
-dnl (They also have MADV_DONTNEED, but it means something else!)
-dnl
-dnl Windows has VirtualAlloc MEM_RESERVE/MEM_COMMIT, however
-dnl it counts page-table space as committed memory, and so quickly
-dnl runs out of paging file when we have multiple processes reserving
-dnl 1TB of address space, we get the following error:
-dnl    VirtualAlloc MEM_RESERVE 1099512676352 bytes failed: The paging file is too small for this operation to complete.
-dnl
-
-AC_ARG_ENABLE(large-address-space,
-    [AS_HELP_STRING([--enable-large-address-space],
-        [Use a single large address space on 64 bit systems (enabled by default on 64 bit platforms)])],
-    EnableLargeAddressSpace=$enableval,
-    EnableLargeAddressSpace=yes
-)
-
-use_large_address_space=no
-if test "$ac_cv_sizeof_void_p" -eq 8 ; then
-    if test "x$EnableLargeAddressSpace" = "xyes" ; then
-        if test "$ghc_host_os" = "darwin" ; then
-            use_large_address_space=yes
-        elif test "$ghc_host_os" = "openbsd" ; then
-            # as of OpenBSD 5.8 (2015), OpenBSD does not support mmap with MAP_NORESERVE.
-            # The flag MAP_NORESERVE is supported for source compatibility reasons,
-            # but is completely ignored by OS mmap
-                  use_large_address_space=no
-        elif test "$ghc_host_os" = "mingw32" ; then
-            # as of Windows 8.1/Server 2012 windows does no longer allocate the page
-            # tabe for reserved memory eagerly. So we are now free to use LAS there too.
-                  use_large_address_space=yes
-        else
-            AC_CHECK_DECLS([MAP_NORESERVE, MADV_FREE, MADV_DONTNEED],[],[],
-                [
-                #include <unistd.h>
-                #include <sys/types.h>
-                #include <sys/mman.h>
-                #include <fcntl.h>
-            ])
-            if test "$ac_cv_have_decl_MAP_NORESERVE" = "yes" &&
-                test "$ac_cv_have_decl_MADV_FREE" = "yes" ||
-                test "$ac_cv_have_decl_MADV_DONTNEED" = "yes" ; then
-                    use_large_address_space=yes
-            fi
-        fi
-    fi
-fi
-if test "$use_large_address_space" = "yes" ; then
-   AC_DEFINE([USE_LARGE_ADDRESS_SPACE], [1], [Enable single heap address space support])
-fi
-
-dnl ** Use MMAP in the runtime linker?
-dnl --------------------------------------------------------------
-
-case ${TargetOS} in
-    linux|linux-android|freebsd|dragonfly|netbsd|openbsd|kfreebsdgnu|gnu|solaris2)
-        RtsLinkerUseMmap=1
-        ;;
-    darwin|ios|watchos|tvos)
-        RtsLinkerUseMmap=1
-        ;;
-    *)
-        # Windows (which doesn't have mmap) and everything else.
-        RtsLinkerUseMmap=0
-        ;;
-    esac
-
-AC_DEFINE_UNQUOTED([RTS_LINKER_USE_MMAP], [$RtsLinkerUseMmap],
-                   [Use mmap in the runtime linker])
-
-
-GHC_ADJUSTORS_METHOD([Target])
-AC_SUBST([UseLibffiForAdjustors])
-
-dnl ** Other RTS features
-dnl --------------------------------------------------------------
-FP_FIND_LIBDW
-AC_SUBST(UseLibdw)
-AC_SUBST(LibdwLibDir)
-AC_SUBST(LibdwIncludeDir)
-
-FP_FIND_LIBNUMA
-AC_SUBST(UseLibNuma)
-AC_SUBST(LibNumaLibDir)
-AC_SUBST(LibNumaIncludeDir)
 
 dnl ** Documentation
 dnl --------------------------------------------------------------

@@ -45,5 +45,12 @@ AC_DEFUN([FP_FIND_LIBDW],
     CFLAGS="$CFLAGS2"
     LDFLAGS="$LDFLAGS2"
   fi
+
+  AC_SUBST(UseLibdw)
+  USE_LIBDW=0
+  if test $UseLibdw = "YES" ; then
+    USE_LIBDW=1
+  fi
+  AC_DEFINE_UNQUOTED([USE_LIBDW], [$USE_LIBDW], [Set to 1 to use libdw]
 ])
 

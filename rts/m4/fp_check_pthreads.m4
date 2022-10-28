@@ -12,23 +12,20 @@ AC_DEFUN([FP_CHECK_PTHREADS],
   AC_CHECK_FUNC(pthread_create,
       [
           AC_MSG_RESULT(no)
-          AC_SUBST([UseLibpthread],[NO])
           need_lpthread=0
       ],
       [
           AC_CHECK_LIB(pthread, pthread_create,
               [
                   AC_MSG_RESULT(yes)
-                  AC_SUBST([UseLibpthread],[YES])
                   need_lpthread=1
               ],
               [
-                  AC_SUBST([UseLibpthread],[NO])
                   AC_MSG_RESULT([no pthreads support found.])
                   need_lpthread=0
               ])
       ])
-  AC_DEFINE_UNQUOTED([NEED_PTHREAD_LIB], [$need_lpthread],
+  AC_DEFINE_UNQUOTED([GHC_NEED_LIBPTHREAD], [$need_lpthread],
       [Define 1 if we need to link code using pthreads with -lpthread])
 
   dnl Setting thread names

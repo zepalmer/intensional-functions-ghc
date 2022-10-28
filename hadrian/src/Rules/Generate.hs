@@ -264,38 +264,12 @@ templateRules = do
 
     project_version        <- setting ProjectVersion
     project_version_munged <- setting ProjectVersionMunged
-    target_word_size       <- settingWord TargetWordSize
-    lib_dw                 <- flag UseLibdw
-    lib_numa               <- flag UseLibnuma
-    lib_mingwex            <- flag UseLibmingwex
-    lib_m                  <- flag UseLibm
-    lib_rt                 <- flag UseLibrt
-    lib_dl                 <- flag UseLibdl
-    lib_ffi                <- flag UseSystemFfi
-    lib_ffi_adjustors      <- flag UseLibffiForAdjustors
-    lib_bfd                <- flag UseLibbfd
-    lib_pthread            <- flag UseLibpthread
-    leading_underscore     <- flag LeadingUnderscore
-    need_libatomic         <- flag NeedLibatomic
 
     let cabal_bool True  = "True"
         cabal_bool False = "False"
 
         subst = replace "@ProjectVersion@" project_version
                 . replace "@ProjectVersionMunged@" project_version_munged
-                . replace "@Cabal64bit@" (cabal_bool (target_word_size == 8))
-                . replace "@CabalMingwex@" (cabal_bool lib_mingwex)
-                . replace "@CabalHaveLibdw@" (cabal_bool lib_dw)
-                . replace "@CabalHaveLibm@" (cabal_bool lib_m)
-                . replace "@CabalHaveLibrt@" (cabal_bool lib_rt)
-                . replace "@CabalHaveLibdl@" (cabal_bool lib_dl)
-                . replace "@CabalUseSystemLibFFI@" (cabal_bool lib_ffi)
-                . replace "@CabalLibffiAdjustors@" (cabal_bool lib_ffi_adjustors)
-                . replace "@CabalNeedLibpthread@" (cabal_bool lib_pthread)
-                . replace "@CabalHaveLibbfd@" (cabal_bool lib_bfd)
-                . replace "@CabalHaveLibNuma@" (cabal_bool lib_numa)
-                . replace "@CabalLeadingUnderscore@" (cabal_bool leading_underscore)
-                . replace "@CabalNeedLibatomic@" (cabal_bool need_libatomic)
 
     s <- readFile' (out <.> "in")
     writeFile' out (subst s)
@@ -415,7 +389,6 @@ generateSettings = do
         , ("target has .ident directive", expr $ lookupSystemConfig "target-has-ident-directive")
         , ("target has subsections via symbols", expr $ lookupSystemConfig "target-has-subsections-via-symbols")
         , ("target has RTS linker", expr $ lookupSystemConfig "target-has-rts-linker")
-        , ("target has libm", expr $  lookupSystemConfig "target-has-libm")
         , ("Unregisterised", expr $ yesNo <$> flag GhcUnregisterised)
         , ("LLVM target", getSetting LlvmTarget)
         , ("LLVM llc command", expr $ settingsFileSetting SettingsFileSetting_LlcCommand)

@@ -1,3 +1,63 @@
 -- External symbols referenced by the RTS
 ld-options:
 #include "external-symbols.list"
+
+#if GHC_LIBFFI_ADJUSTORS
+  -- Adjustors via libffi
+  c-sources: adjustor/LibffiAdjustor.c
+#else
+  -- Use GHC's native adjustors
+# if defined(i386_HOST_ARCH)
+    asm-sources: adjustor/Nativei386Asm.S
+    c-sources: adjustor/Nativei386.c
+# elif defined(x86_64_HOST_ARCH)
+#   if defined(mingw32_HOST_OS)
+      asm-sources: adjustor/NativeAmd64MingwAsm.S
+      c-sources: adjustor/NativeAmd64Mingw.c
+#   else
+      asm-sources: adjustor/NativeAmd64Asm.S
+      c-sources: adjustor/NativeAmd64.c
+#   endif
+# elif defined(powerpc_HOST_ARCH) || defined(powerpc64_HOST_ARCH)
+    asm-sources: AdjustorAsm.S
+    c-sources: adjustor/NativePowerPC.c
+# elif defined(ia64_HOST_ARCH)
+    c-sources: adjustor/NativeIA64.c
+# endif
+#endif
+
+#if GHC_NEED_LIBRT
+  extra-libraries: rt
+#endif
+
+#if GHC_NEED_LIBM
+  extra-libraries: m
+#endif
+
+#if GHC_NEED_LIBDL
+  extra-libraries: dl
+#endif
+
+#if GHC_NEED_LIBATOMIC
+  -- for sub-word-sized atomic operations (#19119)
+  extra-libraries: atomic
+#endif
+
+#if GHC_NEED_LIBPTHREAD
+  -- for pthread_getthreadid_np, pthread_create, ...
+  extra-libraries: pthread
+#endif
+
+#if USE_LIBBFD
+  -- for debugging
+  extra-libraries: bfd iberty
+#endif
+
+#if USE_LIBDW
+  -- for backtraces
+  extra-libraries: elf dw
+#endif
+
+#if USE_LIBNUMA
+  extra-libraries: numa
+#endif

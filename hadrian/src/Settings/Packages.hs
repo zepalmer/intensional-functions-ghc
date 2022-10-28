@@ -283,10 +283,6 @@ rtsPackageArgs = package rts ? do
     useSystemFfi   <- expr $ flag UseSystemFfi
     ffiIncludeDir  <- getSetting FfiIncludeDir
     ffiLibraryDir  <- getSetting FfiLibDir
-    libdwIncludeDir   <- getSetting LibdwIncludeDir
-    libdwLibraryDir   <- getSetting LibdwLibDir
-    libnumaIncludeDir <- getSetting LibnumaIncludeDir
-    libnumaLibraryDir <- getSetting LibnumaLibDir
 
     -- Arguments passed to GHC when compiling C and .cmm sources.
     let ghcArgs = mconcat
@@ -391,9 +387,7 @@ rtsPackageArgs = package rts ? do
           , Debug `wayUnit` way             `cabalFlag` "find-ptr"
           ]
         , builder (Cabal Setup) ? mconcat
-              [ cabalExtraDirs libdwIncludeDir libdwLibraryDir
-              , cabalExtraDirs libnumaIncludeDir libnumaLibraryDir
-              , useSystemFfi ? cabalExtraDirs ffiIncludeDir ffiLibraryDir
+              [ useSystemFfi ? cabalExtraDirs ffiIncludeDir ffiLibraryDir
               ]
         , builder (Cc (FindCDependencies CDep)) ? cArgs
         , builder (Cc (FindCDependencies  CxxDep)) ? cArgs
@@ -405,7 +399,7 @@ rtsPackageArgs = package rts ? do
           [ "-DTOP="             ++ show top ]
 
         , builder HsCpp ? flag UseLibdw ? arg "-DUSE_LIBDW"
-        , builder HsCpp ? flag UseLibmingwex ? arg "-DHAVE_LIBMINGWEX" ]
+        ]
 
 -- Compile various performance-critical pieces *without* -fPIC -dynamic
 -- even when building a shared library.  If we don't do this, then the

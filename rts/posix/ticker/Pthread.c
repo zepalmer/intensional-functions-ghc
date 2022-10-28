@@ -55,6 +55,9 @@
 
 #include <string.h>
 
+#if defined(linux_HOST_OS)
+#define _GNU_SOURCE 1
+#endif
 #include <pthread.h>
 #if defined(HAVE_PTHREAD_NP_H)
 #include <pthread_np.h>
