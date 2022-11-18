@@ -66,6 +66,7 @@ module GHC.Cmm.CLabel (
         mkBadAlignmentLabel,
         mkOutOfBoundsAccessLabel,
         mkArrWords_infoLabel,
+        mkArrWordsPinned_infoLabel,
         mkSRTInfoLabel,
 
         mkTopTickyCtrLabel,
@@ -645,6 +646,7 @@ mkDirty_MUT_VAR_Label,
     mkMAP_FROZEN_CLEAN_infoLabel, mkMAP_FROZEN_DIRTY_infoLabel,
     mkMAP_DIRTY_infoLabel,
     mkArrWords_infoLabel,
+    mkArrWordsPinned_infoLabel,
     mkTopTickyCtrLabel,
     mkCAFBlackHoleInfoTableLabel,
     mkSMAP_FROZEN_CLEAN_infoLabel, mkSMAP_FROZEN_DIRTY_infoLabel,
@@ -663,6 +665,7 @@ mkMAP_DIRTY_infoLabel           = CmmLabel rtsUnitId (NeedExternDecl False) (fsL
 mkTopTickyCtrLabel              = CmmLabel rtsUnitId (NeedExternDecl False) (fsLit "top_ct")                CmmData
 mkCAFBlackHoleInfoTableLabel    = CmmLabel rtsUnitId (NeedExternDecl False) (fsLit "stg_CAF_BLACKHOLE")     CmmInfo
 mkArrWords_infoLabel            = CmmLabel rtsUnitId (NeedExternDecl False) (fsLit "stg_ARR_WORDS")         CmmInfo
+mkArrWordsPinned_infoLabel      = CmmLabel rtsUnitId (NeedExternDecl False) (fsLit "stg_ARR_WORDS_PINNED")         CmmInfo
 mkSMAP_FROZEN_CLEAN_infoLabel   = CmmLabel rtsUnitId (NeedExternDecl False) (fsLit "stg_SMALL_MUT_ARR_PTRS_FROZEN_CLEAN") CmmInfo
 mkSMAP_FROZEN_DIRTY_infoLabel   = CmmLabel rtsUnitId (NeedExternDecl False) (fsLit "stg_SMALL_MUT_ARR_PTRS_FROZEN_DIRTY") CmmInfo
 mkSMAP_DIRTY_infoLabel          = CmmLabel rtsUnitId (NeedExternDecl False) (fsLit "stg_SMALL_MUT_ARR_PTRS_DIRTY") CmmInfo
