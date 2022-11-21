@@ -105,7 +105,7 @@ buildProgram bin ctx@(Context{..}) rs = do
     (True, s) | s > stage0InTree -> do
         srcDir <- buildRoot <&> (-/- (stageString stage0InTree -/- "bin"))
         copyFile (srcDir -/- takeFileName bin) bin
-    (False, s) | s > stage0InTree && (package `elem` [touchy, unlit]) -> do
+    (False, s) | s > stage0InTree && (package `elem` [unlit]) -> do
         srcDir <- stageLibPath stage0InTree <&> (-/- "bin")
         copyFile (srcDir -/- takeFileName bin) bin
     _ -> buildBinary rs bin ctx

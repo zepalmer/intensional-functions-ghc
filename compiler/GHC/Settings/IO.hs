@@ -112,8 +112,6 @@ initSettings top_dir = do
   install_name_tool_path <- getToolSetting "install_name_tool command"
   ranlib_path <- getToolSetting "ranlib command"
 
-  touch_path <- getToolSetting "touch command"
-
   mkdll_prog <- getToolSetting "dllwrap command"
   let mkdll_args = []
 
@@ -177,7 +175,6 @@ initSettings top_dir = do
       , toolSettings_pgm_l   = (ld_prog, ld_args)
       , toolSettings_pgm_lm  = ld_r
       , toolSettings_pgm_dll = (mkdll_prog,mkdll_args)
-      , toolSettings_pgm_T   = touch_path
       , toolSettings_pgm_windres = windres_path
       , toolSettings_pgm_ar = ar_path
       , toolSettings_pgm_otool = otool_path

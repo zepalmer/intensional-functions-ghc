@@ -105,7 +105,6 @@ stage0Packages = do
              ]
           ++ [ terminfo | not windowsHost, not cross ]
           ++ [ timeout  | windowsHost                ]
-          ++ [ touchy   | windowsHost                ]
 
 -- | Packages built in 'Stage1' by default. You can change this in "UserSettings".
 stage1Packages :: Action [Package]
@@ -176,16 +175,14 @@ defaultLibraryWays = Set.fromList <$>
 defaultRtsWays :: Ways
 defaultRtsWays = Set.fromList <$>
   mconcat
-  [ pure [vanilla]
+  [ pure [vanilla, threaded]
   , notStage0 ? pure
-      [ profiling, debugProfiling
-      , debug
+      [ profiling, threadedProfiling, debugProfiling, threadedDebugProfiling
+      , debug, threadedDebug
       ]
-  , notStage0 ? targetSupportsThreadedRts ? pure [threaded, threadedProfiling, threadedDebugProfiling, threadedDebug]
   , notStage0 ? platformSupportsSharedLibs ? pure
-      [ dynamic, debugDynamic
+      [ dynamic, threadedDynamic, debugDynamic, threadedDebugDynamic
       ]
-  , notStage0 ? platformSupportsSharedLibs ? targetSupportsThreadedRts ? pure [ threadedDynamic, threadedDebugDynamic ]
   ]
 
 -- TODO: Move C source arguments here

@@ -25,7 +25,6 @@ AC_DEFUN([FP_SETTINGS],
         SettingsRanlibCommand="${mingw_bin_prefix}llvm-ranlib.exe"
         SettingsDllWrapCommand="${mingw_bin_prefix}llvm-dllwrap.exe"
         SettingsWindresCommand="${mingw_bin_prefix}llvm-windres.exe"
-        SettingsTouchCommand='$$topdir/bin/touchy.exe'
 
     else
         # This case handles the "normal" platforms (e.g. not Windows) where we
@@ -54,12 +53,6 @@ AC_DEFUN([FP_SETTINGS],
             SettingsWindresCommand="/bin/false"
         else
             SettingsWindresCommand="$WindresCmd"
-        fi
-
-        if test "$HostOS" = "mingw32"; then
-            SettingsTouchCommand='$$topdir/bin/touchy.exe'
-        else
-            SettingsTouchCommand='touch'
         fi
 
         if test "$EnableDistroToolchain" = "YES"; then
@@ -123,7 +116,6 @@ AC_DEFUN([FP_SETTINGS],
     AC_SUBST(SettingsInstallNameToolCommand)
     AC_SUBST(SettingsDllWrapCommand)
     AC_SUBST(SettingsWindresCommand)
-    AC_SUBST(SettingsTouchCommand)
     AC_SUBST(SettingsClangCommand)
     AC_SUBST(SettingsLlcCommand)
     AC_SUBST(SettingsOptCommand)

@@ -235,7 +235,6 @@ instance H.Builder Builder where
           pure []
         Ghc _ stage -> do
             root <- buildRoot
-            touchyPath <- programPath (vanillaContext (Stage0 InTreeLibs) touchy)
             unlitPath  <- builderPath Unlit
 
             -- GHC from the previous stage is used to build artifacts in the
@@ -244,7 +243,6 @@ instance H.Builder Builder where
 
             return $ [ unlitPath ]
                   ++ ghcdeps
-                  ++ [ touchyPath          | windowsHost ]
                   ++ [ root -/- mingwStamp | windowsHost ]
                      -- proxy for the entire mingw toolchain that
                      -- we have in inplace/mingw initially, and then at

@@ -32,7 +32,6 @@ module GHC.Settings
   , sPgm_l
   , sPgm_lm
   , sPgm_dll
-  , sPgm_T
   , sPgm_windres
   , sPgm_ar
   , sPgm_otool
@@ -105,7 +104,6 @@ data ToolSettings = ToolSettings
     -- merging, hence the 'Maybe'. See Note [Object merging] in
     -- "GHC.Driver.Pipeline.Execute" for details.
   , toolSettings_pgm_dll     :: (String, [Option])
-  , toolSettings_pgm_T       :: String
   , toolSettings_pgm_windres :: String
   , toolSettings_pgm_ar      :: String
   , toolSettings_pgm_otool   :: String
@@ -216,8 +214,6 @@ sPgm_lm :: Settings -> Maybe (String, [Option])
 sPgm_lm = toolSettings_pgm_lm . sToolSettings
 sPgm_dll :: Settings -> (String, [Option])
 sPgm_dll = toolSettings_pgm_dll . sToolSettings
-sPgm_T :: Settings -> String
-sPgm_T = toolSettings_pgm_T . sToolSettings
 sPgm_windres :: Settings -> String
 sPgm_windres = toolSettings_pgm_windres . sToolSettings
 sPgm_ar :: Settings -> String

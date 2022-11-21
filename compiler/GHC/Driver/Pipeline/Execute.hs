@@ -74,6 +74,7 @@ import GHC.Linker.ExtraObj
 import GHC.Linker.Dynamic
 import Data.Version
 import GHC.Utils.Panic
+import GHC.Utils.Touch
 import GHC.Unit.Module.Env
 import GHC.Driver.Env.KnotVars
 import GHC.Driver.Config.Finder
@@ -529,7 +530,7 @@ runHscBackendPhase pipe_env hsc_env mod_name src_flavour location result = do
 
                -- In the case of hs-boot files, generate a dummy .o-boot
                -- stamp file for the benefit of Make
-               HsBootFile -> touchObjectFile logger dflags o_file
+               HsBootFile -> touchObjectFile o_file
                HsSrcFile -> panic "HscUpdate not relevant for HscSrcFile"
 
              return ([], iface, emptyHomeModInfoLinkable, o_file)
@@ -1148,10 +1149,10 @@ generateMacros prefix name version =
 
 
 
-touchObjectFile :: Logger -> DynFlags -> FilePath -> IO ()
-touchObjectFile logger dflags path = do
+touchObjectFile :: FilePath -> IO ()
+touchObjectFile path = do
   createDirectoryIfMissing True $ takeDirectory path
-  GHC.SysTools.touch logger dflags "Touching object file" path
+  GHC.Utils.Touch.touch path
 
 -- Note [-fPIC for assembler]
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~

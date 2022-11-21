@@ -250,6 +250,7 @@ import GHC.Utils.Outputable
 import GHC.Utils.Misc
 import GHC.Utils.Logger
 import GHC.Utils.TmpFs
+import GHC.Utils.Touch
 
 import GHC.Data.FastString
 import GHC.Data.Bag
@@ -1263,7 +1264,7 @@ hscMaybeWriteIface logger dflags is_simple iface old_iface mod_location = do
           -- .hie files.
           let hie_file = ml_hie_file mod_location
           whenM (doesFileExist hie_file) $
-            GHC.SysTools.touch logger dflags "Touching hie file" hie_file
+            GHC.Utils.Touch.touch hie_file
     else
         -- See Note [Strictness in ModIface]
         forceModIface iface
