@@ -79,6 +79,7 @@ module GHC.Tc.Utils.TcMType (
 
   zonkTcType, zonkTcTypes, zonkCo,
   zonkTyCoVarKind,
+  zonkTyCoVarBndrKind,
   zonkEvVar, zonkWC, zonkImplication, zonkSimples,
   zonkId, zonkCoVar,
   zonkCt, zonkSkolemInfo, zonkSkolemInfoAnon,
@@ -2316,6 +2317,11 @@ zonkTcTyVars tyvars = mapM zonkTcTyVar tyvars
 zonkTyCoVarKind :: TyCoVar -> TcM TyCoVar
 zonkTyCoVarKind tv = do { kind' <- zonkTcType (tyVarKind tv)
                         ; return (setTyVarKind tv kind') }
+
+zonkTyCoVarBndrKind :: VarBndr TyCoVar flag -> TcM (VarBndr TyCoVar flag)
+zonkTyCoVarBndrKind (Bndr tv flag) =
+  do { tv' <- zonkTyCoVarKind tv
+     ; return (Bndr tv' flag) }
 
 {-
 ************************************************************************

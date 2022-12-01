@@ -6,6 +6,15 @@ Version 9.8.1
 Language
 ~~~~~~~~
 
+- GHC Proposal `#425
+  <https://github.com/ghc-proposals/ghc-proposals/blob/master/proposals/0425-decl-invis-binders.rst>`_
+  has been partially implemented. Namely, the ``@k``-binders in type declarations are now permitted::
+
+    type T :: forall k. k -> forall j. j -> Type
+    data T @k (a :: k) @(j :: Type) (b :: j)
+
+  This feature is guarded behind :extension:`TypeAbstractions`.
+
 Compiler
 ~~~~~~~~
 

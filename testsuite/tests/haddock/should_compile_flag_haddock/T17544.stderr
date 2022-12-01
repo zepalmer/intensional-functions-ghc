@@ -76,7 +76,7 @@
            []
            (EpaComments
             []))
-          (())
+          (HsBndrRequired)
           (L
            (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:5:10 })
            (Unqual
@@ -213,7 +213,7 @@
            []
            (EpaComments
             []))
-          (())
+          (HsBndrRequired)
           (L
            (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:9:10 })
            (Unqual
@@ -348,7 +348,7 @@
            []
            (EpaComments
             []))
-          (())
+          (HsBndrRequired)
           (L
            (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:13:10 })
            (Unqual
@@ -486,7 +486,7 @@
            []
            (EpaComments
             []))
-          (())
+          (HsBndrRequired)
           (L
            (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:17:10 })
            (Unqual
@@ -684,7 +684,7 @@
            []
            (EpaComments
             []))
-          (())
+          (HsBndrRequired)
           (L
            (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:22:10 })
            (Unqual
@@ -722,7 +722,7 @@
               []
               (EpaComments
                []))
-             (())
+             (HsBndrRequired)
              (L
               (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:22:28 })
               (Unqual
@@ -961,7 +961,7 @@
            []
            (EpaComments
             []))
-          (())
+          (HsBndrRequired)
           (L
            (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:28:10 })
            (Unqual
@@ -999,7 +999,7 @@
               []
               (EpaComments
                []))
-             (())
+             (HsBndrRequired)
              (L
               (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:28:28 })
               (Unqual
@@ -1238,7 +1238,7 @@
            []
            (EpaComments
             []))
-          (())
+          (HsBndrRequired)
           (L
            (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:34:10 })
            (Unqual
@@ -1276,7 +1276,7 @@
               []
               (EpaComments
                []))
-             (())
+             (HsBndrRequired)
              (L
               (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:34:28 })
               (Unqual
@@ -1515,7 +1515,7 @@
            []
            (EpaComments
             []))
-          (())
+          (HsBndrRequired)
           (L
            (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:40:10 })
            (Unqual
@@ -1553,7 +1553,7 @@
               []
               (EpaComments
                []))
-             (())
+             (HsBndrRequired)
              (L
               (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:40:28 })
               (Unqual
@@ -1792,7 +1792,7 @@
            []
            (EpaComments
             []))
-          (())
+          (HsBndrRequired)
           (L
            (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:46:10 })
            (Unqual
@@ -1830,7 +1830,7 @@
               []
               (EpaComments
                []))
-             (())
+             (HsBndrRequired)
              (L
               (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:46:28 })
               (Unqual
@@ -2069,7 +2069,7 @@
            []
            (EpaComments
             []))
-          (())
+          (HsBndrRequired)
           (L
            (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:52:11 })
            (Unqual
@@ -2107,7 +2107,7 @@
               []
               (EpaComments
                []))
-             (())
+             (HsBndrRequired)
              (L
               (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:52:30 })
               (Unqual

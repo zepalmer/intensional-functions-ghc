@@ -430,14 +430,6 @@ instance Diagnostic PsMessage where
       -> mkSimpleDecorated $
            text "Malformed" <+> what
            <+> text "declaration for" <+> quotes (ppr for)
-    PsErrUnexpectedTypeAppInDecl ki what for
-      -> mkSimpleDecorated $
-           vcat [ text "Unexpected type application"
-                  <+> text "@" <> ppr ki
-                , text "In the" <+> what
-                  <+> text "declaration for"
-                  <+> quotes (ppr for)
-                ]
     PsErrNotADataCon name
       -> mkSimpleDecorated $ text "Not a data constructor:" <+> quotes (ppr name)
     PsErrInferredTypeVarNotAllowed
@@ -626,7 +618,6 @@ instance Diagnostic PsMessage where
     PsErrAtInPatPos                               -> ErrorWithoutFlag
     PsErrParseErrorOnInput{}                      -> ErrorWithoutFlag
     PsErrMalformedDecl{}                          -> ErrorWithoutFlag
-    PsErrUnexpectedTypeAppInDecl{}                -> ErrorWithoutFlag
     PsErrNotADataCon{}                            -> ErrorWithoutFlag
     PsErrInferredTypeVarNotAllowed                -> ErrorWithoutFlag
     PsErrIllegalTraditionalRecordSyntax{}         -> ErrorWithoutFlag
@@ -767,7 +758,6 @@ instance Diagnostic PsMessage where
     PsErrAtInPatPos                               -> noHints
     PsErrParseErrorOnInput{}                      -> noHints
     PsErrMalformedDecl{}                          -> noHints
-    PsErrUnexpectedTypeAppInDecl{}                -> noHints
     PsErrNotADataCon{}                            -> noHints
     PsErrInferredTypeVarNotAllowed                -> noHints
     PsErrIllegalTraditionalRecordSyntax{}         -> [suggestExtension LangExt.TraditionalRecordSyntax]

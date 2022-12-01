@@ -25,6 +25,7 @@ module Language.Haskell.Syntax.Type (
         HsLinearArrowTokens(..),
 
         HsType(..), LHsType, HsKind, LHsKind,
+        HsBndrVis(..), isHsBndrInvisible,
         HsForAllTelescope(..), HsTyVarBndr(..), LHsTyVarBndr,
         LHsQTyVars(..),
         HsOuterTyVarBndrs(..), HsOuterFamEqnTyVarBndrs, HsOuterSigTyVarBndrs,
@@ -342,12 +343,12 @@ type LHsTyVarBndr flag pass = XRec pass (HsTyVarBndr flag pass)
 data LHsQTyVars pass   -- See Note [HsType binders]
   = HsQTvs { hsq_ext :: XHsQTvs pass
 
-           , hsq_explicit :: [LHsTyVarBndr () pass]
+           , hsq_explicit :: [LHsTyVarBndr (HsBndrVis pass) pass]
                 -- Explicit variables, written by the user
     }
   | XLHsQTyVars !(XXLHsQTyVars pass)
 
-hsQTvExplicit :: LHsQTyVars pass -> [LHsTyVarBndr () pass]
+hsQTvExplicit :: LHsQTyVars pass -> [LHsTyVarBndr (HsBndrVis pass) pass]
 hsQTvExplicit = hsq_explicit
 
 ------------------------------------------------
@@ -712,6 +713,21 @@ data HsTyVarBndr flag pass
 
   | XTyVarBndr
       !(XXTyVarBndr pass)
+
+data HsBndrVis pass
+  = HsBndrRequired
+      -- Binder for a visible (required) variable:
+      --     type Dup a = (a, a)
+      --             ^^^
+
+  | HsBndrInvisible (LHsToken "@" pass)
+      -- Binder for an invisible (specified) variable:
+      --     type KindOf @k (a :: k) = k
+      --                ^^^
+
+isHsBndrInvisible :: HsBndrVis pass -> Bool
+isHsBndrInvisible HsBndrInvisible{} = True
+isHsBndrInvisible HsBndrRequired    = False
 
 -- | Does this 'HsTyVarBndr' come with an explicit kind annotation?
 isHsKindedTyVar :: HsTyVarBndr flag pass -> Bool

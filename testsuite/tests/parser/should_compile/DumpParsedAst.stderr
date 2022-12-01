@@ -399,7 +399,7 @@
             ,(AddEpAnn AnnCloseP (EpaSpan { DumpParsedAst.hs:10:30 }))]
             (EpaComments
              []))
-           (())
+           (HsBndrRequired)
            (L
             (SrcSpanAnn (EpAnnNotUsed) { DumpParsedAst.hs:10:21-22 })
             (Unqual
@@ -491,7 +491,7 @@
            []
            (EpaComments
             []))
-          (())
+          (HsBndrRequired)
           (L
            (SrcSpanAnn (EpAnnNotUsed) { DumpParsedAst.hs:15:8 })
            (Unqual
@@ -508,7 +508,7 @@
            ,(AddEpAnn AnnCloseP (EpaSpan { DumpParsedAst.hs:15:17 }))]
            (EpaComments
             []))
-          (())
+          (HsBndrRequired)
           (L
            (SrcSpanAnn (EpAnnNotUsed) { DumpParsedAst.hs:15:11 })
            (Unqual
@@ -803,7 +803,7 @@
             ,(AddEpAnn AnnCloseP (EpaSpan { DumpParsedAst.hs:17:23 }))]
             (EpaComments
              []))
-           (())
+           (HsBndrRequired)
            (L
             (SrcSpanAnn (EpAnnNotUsed) { DumpParsedAst.hs:17:17 })
             (Unqual
@@ -835,7 +835,7 @@
             ,(AddEpAnn AnnCloseP (EpaSpan { DumpParsedAst.hs:17:40 }))]
             (EpaComments
              []))
-           (())
+           (HsBndrRequired)
            (L
             (SrcSpanAnn (EpAnnNotUsed) { DumpParsedAst.hs:17:26 })
             (Unqual

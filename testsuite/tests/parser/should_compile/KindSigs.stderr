@@ -177,7 +177,7 @@
             []
             (EpaComments
              []))
-           (())
+           (HsBndrRequired)
            (L
             (SrcSpanAnn (EpAnnNotUsed) { KindSigs.hs:11:17 })
             (Unqual
@@ -226,7 +226,7 @@
            []
            (EpaComments
             []))
-          (())
+          (HsBndrRequired)
           (L
            (SrcSpanAnn (EpAnnNotUsed) { KindSigs.hs:15:10 })
            (Unqual
@@ -412,7 +412,7 @@
            []
            (EpaComments
             []))
-          (())
+          (HsBndrRequired)
           (L
            (SrcSpanAnn (EpAnnNotUsed) { KindSigs.hs:16:11 })
            (Unqual
@@ -1163,7 +1163,7 @@
            []
            (EpaComments
             []))
-          (())
+          (HsBndrRequired)
           (L
            (SrcSpanAnn (EpAnnNotUsed) { KindSigs.hs:28:12 })
            (Unqual
@@ -1513,3 +1513,5 @@
                    {OccName: True}))))))]
             (EmptyLocalBinds
              (NoExtField)))))])))))]))
+
+

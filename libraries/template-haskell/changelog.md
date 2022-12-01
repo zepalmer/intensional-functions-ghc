@@ -1,5 +1,14 @@
 # Changelog for [`template-haskell` package](http://hackage.haskell.org/package/template-haskell)
 
+## 2.21.0.0
+
+  * Add `BndrVis` to support invisible binders
+    in type declarations (GHC Proposal #425).
+
+  * The binder flag type in `plainTV` and `kindedTV` is generalized from `()`
+    to any data type with a `DefaultBndrFlag` instance, including `()`,
+    `Specificity`, and `BndrVis`.
+
 ## 2.20.0.0
 
   * The `Ppr.pprInfixT` function has gained a `Precedence` argument. 

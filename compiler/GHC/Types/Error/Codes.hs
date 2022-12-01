@@ -253,7 +253,6 @@ type family GhcDiagnosticCode c = n | n -> c where
   GhcDiagnosticCode "PsErrAtInPatPos"                               = 08382
   GhcDiagnosticCode "PsErrParseErrorOnInput"                        = 66418
   GhcDiagnosticCode "PsErrMalformedDecl"                            = 85316
-  GhcDiagnosticCode "PsErrUnexpectedTypeAppInDecl"                  = 45054
   GhcDiagnosticCode "PsErrNotADataCon"                              = 25742
   GhcDiagnosticCode "PsErrInferredTypeVarNotAllowed"                = 57342
   GhcDiagnosticCode "PsErrIllegalTraditionalRecordSyntax"           = 65719
@@ -512,6 +511,9 @@ type family GhcDiagnosticCode c = n | n -> c where
   GhcDiagnosticCode "TcRnUnexpectedDefaultSig"                      = 40700
   GhcDiagnosticCode "TcRnBindInBootFile"                            = 11247
   GhcDiagnosticCode "TcRnDuplicateMinimalSig"                       = 85346
+  GhcDiagnosticCode "TcRnIllegalInvisTyVarBndr"                     = 58589
+  GhcDiagnosticCode "TcRnInvalidInvisTyVarBndr"                     = 57916
+  GhcDiagnosticCode "TcRnInvisBndrWithoutSig"                       = 92337
 
   -- IllegalNewtypeReason
   GhcDiagnosticCode "DoesNotHaveSingleField"                        = 23517
@@ -619,6 +621,7 @@ type family GhcDiagnosticCode c = n | n -> c where
   GhcDiagnosticCode "Example outdated error"                        = 00000
   GhcDiagnosticCode "TcRnNameByTemplateHaskellQuote"                = 40027
   GhcDiagnosticCode "TcRnIllegalBindingOfBuiltIn"                   = 69639
+  GhcDiagnosticCode "PsErrUnexpectedTypeAppInDecl"                  = 45054
 
 {- *********************************************************************
 *                                                                      *
