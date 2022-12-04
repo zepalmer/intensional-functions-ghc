@@ -131,6 +131,7 @@ import GHC.Data.Bag
 import GHC.Data.Maybe
 import Data.Data (Data)
 import Data.Foldable (toList)
+import qualified GHC.Data.Strict as Strict
 
 {-
 ************************************************************************
@@ -446,9 +447,11 @@ instance (OutputableBndrId p) => Outputable (TyClDecl (GhcPass p)) where
     ppr (ClassDecl {tcdCtxt = context, tcdLName = lclas, tcdTyVars = tyvars,
                     tcdFixity = fixity,
                     tcdFDs  = fds,
+                    tcdTkWhere = tkWhere,
                     tcdSigs = sigs, tcdMeths = methods,
                     tcdATs = ats, tcdATDefs = at_defs})
       | null sigs && isEmptyBag methods && null ats && null at_defs -- No "where" part
+                  && Strict.isNothing tkWhere
       = top_matter
 
       | otherwise       -- Laid out

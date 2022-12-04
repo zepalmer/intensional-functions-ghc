@@ -498,8 +498,8 @@ instance HasHaddock (HsDecl GhcPs) where
   --      -- ^ Comment on the second method
   --
   addHaddock (TyClD _ decl)
-    | ClassDecl { tcdCExt = (x, NoAnnSortKey), tcdLayout,
-                  tcdCtxt, tcdLName, tcdTyVars, tcdFixity, tcdFDs,
+    | ClassDecl { tcdCExt = (x, NoAnnSortKey), tcdLayout, tcdTkClass,
+                  tcdCtxt, tcdLName, tcdTyVars, tcdFixity, tcdFDs, tcdTkWhere,
                   tcdSigs, tcdMeths, tcdATs, tcdATDefs } <- decl
     = do
         registerHdkA tcdLName
@@ -509,8 +509,8 @@ instance HasHaddock (HsDecl GhcPs) where
           flattenBindsAndSigs (tcdMeths, tcdSigs, tcdATs, tcdATDefs, [], [])
         pure $
           let (tcdMeths', tcdSigs', tcdATs', tcdATDefs', _, tcdDocs) = partitionBindsAndSigs where_cls'
-              decl' = ClassDecl { tcdCExt = (x, NoAnnSortKey), tcdLayout
-                                , tcdCtxt, tcdLName, tcdTyVars, tcdFixity, tcdFDs
+              decl' = ClassDecl { tcdCExt = (x, NoAnnSortKey), tcdLayout, tcdTkClass
+                                , tcdCtxt, tcdLName, tcdTyVars, tcdFixity, tcdFDs, tcdTkWhere
                                 , tcdSigs = tcdSigs'
                                 , tcdMeths = tcdMeths'
                                 , tcdATs = tcdATs'

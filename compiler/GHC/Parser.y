@@ -1244,8 +1244,8 @@ topdecl :: { LHsDecl GhcPs }
 --
 cl_decl :: { LTyClDecl GhcPs }
         : 'class' tycl_hdr fds where_cls
-                {% (mkClassDecl (comb4 $1 $2 $3 $4) $2 $3 (sndOf3 $ unLoc $4) (thdOf3 $ unLoc $4))
-                        (mj AnnClass $1:(fst $ unLoc $3)++(fstOf3 $ unLoc $4)) }
+                {% (mkClassDecl (comb4 $1 $2 $3 $4) (hsTok $1) $2 $3 (snd $ unLoc $4))
+                        (mj AnnClass $1:(fst $ unLoc $3)++(fst $ unLoc $4)) }
 
 -- Type declarations (toplevel)
 --
@@ -1721,14 +1721,14 @@ decllist_cls
 
 -- Class body
 --
-where_cls :: { Located ([AddEpAnn]
-                       ,(OrdList (LHsDecl GhcPs))    -- Reversed
-                       ,LayoutInfo GhcPs) }
+where_cls :: { Located ([AddEpAnn], PsClassWhereClause) }
                                 -- No implicit parameters
                                 -- May have type declarations
         : 'where' decllist_cls          { sLL $1 $> (mj AnnWhere $1:(fstOf3 $ unLoc $2)
-                                             ,sndOf3 $ unLoc $2,thdOf3 $ unLoc $2) }
-        | {- empty -}                   { noLoc ([],nilOL,NoLayoutInfo) }
+                                             ,PsClassWhereClause (thdOf3 $ unLoc $2)
+                                                                 (Strict.Just (hsTok $1))
+                                                                 (sndOf3 $ unLoc $2)) }
+        | {- empty -}                   { noLoc ([],PsClassWhereClause NoLayoutInfo Strict.Nothing nilOL) }
 
 -- Declarations in instance bodies
 --

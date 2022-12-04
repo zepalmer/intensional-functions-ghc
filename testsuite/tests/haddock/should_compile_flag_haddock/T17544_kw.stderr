@@ -281,6 +281,10 @@
        (NoAnnSortKey))
       (VirtualBraces
        (5))
+      (L
+       (TokenLoc
+        (EpaSpan { T17544_kw.hs:21:1-5 }))
+       (HsTok))
       (Nothing)
       (L
        (SrcSpanAnn (EpAnnNotUsed) { T17544_kw.hs:21:7-9 })
@@ -305,6 +309,11 @@
             {OccName: a}))))])
       (Prefix)
       []
+      (Just
+       (L
+        (TokenLoc
+         (EpaSpan { T17544_kw.hs:23:3-7 }))
+        (HsTok)))
       [(L
         (SrcSpanAnn (EpAnnNotUsed) { T17544_kw.hs:24:5-18 })
         (ClassOpSig

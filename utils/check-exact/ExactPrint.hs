@@ -3461,9 +3461,11 @@ instance ExactPrint (TyClDecl GhcPs) where
 
   exact (ClassDecl {tcdCExt = (an, sortKey),
                     tcdLayout = lo,
+                    tcdTkClass = tkClass,
                     tcdCtxt = context, tcdLName = lclas, tcdTyVars = tyvars,
                     tcdFixity = fixity,
                     tcdFDs  = fds,
+                    tcdTkWhere = tkWhere,
                     tcdSigs = sigs, tcdMeths = methods,
                     tcdATs = ats, tcdATDefs = at_defs,
                     tcdDocs = _docs})
@@ -3475,9 +3477,11 @@ instance ExactPrint (TyClDecl GhcPs) where
           an2 <- markEpAnnL an1 lidl AnnCloseC
           return (ClassDecl {tcdCExt = (an2, sortKey),
                              tcdLayout = lo,
+                             tcdTkClass = tkClass,
                              tcdCtxt = context', tcdLName = lclas', tcdTyVars = tyvars',
                              tcdFixity = fixity,
                              tcdFDs  = fds',
+                             tcdTkWhere = tkWhere,
                              tcdSigs = sigs, tcdMeths = methods,
                              tcdATs = ats, tcdATDefs = at_defs,
                              tcdDocs = _docs})
@@ -3502,9 +3506,11 @@ instance ExactPrint (TyClDecl GhcPs) where
             at_defs' = undynamic ds
           return (ClassDecl {tcdCExt = (an3, sortKey),
                              tcdLayout = lo,
+                             tcdTkClass = tkClass,
                              tcdCtxt = context', tcdLName = lclas', tcdTyVars = tyvars',
                              tcdFixity = fixity,
                              tcdFDs  = fds',
+                             tcdTkWhere = tkWhere,
                              tcdSigs = sigs', tcdMeths = methods',
                              tcdATs = ats', tcdATDefs = at_defs',
                              tcdDocs = _docs})
