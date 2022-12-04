@@ -1,7 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# OPTIONS -haddock -ddump-parsed-ast #-}
 
--- Haddock comments in this test case should all be rejected, but they are not.
+-- Haddock comments in this test case should all be rejected, but some of them are not.
 --
 -- This is a known issue. Users should avoid writing comments in such
 -- positions, as a future fix will disallow them.

@@ -15,6 +15,7 @@ module GHC.Parser.Annotation (
   AddEpAnn(..),
   EpaLocation(..), epaLocationRealSrcSpan, epaLocationFromSrcAnn,
   TokenLocation(..),
+  getTokenBufSpan,
   DeltaPos(..), deltaPos, getDeltaLine,
 
   EpAnn(..), Anchor(..), AnchorOperation(..),
@@ -411,6 +412,11 @@ data EpaLocation = EpaSpan !RealSrcSpan !(Strict.Maybe BufSpan)
 -- generated code (e.g. by TH).
 data TokenLocation = NoTokenLoc | TokenLoc !EpaLocation
                deriving (Data,Eq)
+
+getTokenBufSpan :: TokenLocation -> Strict.Maybe BufSpan
+getTokenBufSpan (TokenLoc (EpaSpan _ mbspan)) = mbspan
+getTokenBufSpan (TokenLoc EpaDelta{}) = Strict.Nothing
+getTokenBufSpan NoTokenLoc = Strict.Nothing
 
 instance Outputable a => Outputable (GenLocated TokenLocation a) where
   ppr (L _ x) = ppr x

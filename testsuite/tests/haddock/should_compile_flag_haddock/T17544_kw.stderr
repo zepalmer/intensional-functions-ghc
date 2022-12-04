@@ -356,20 +356,9 @@
        []}
       []
       []
-      [(L
-        (SrcSpanAnn (EpAnnNotUsed) { T17544_kw.hs:22:5-34 })
-        (DocCommentNext
-         (L
-          { T17544_kw.hs:22:5-34 }
-          (WithHsDocIdentifiers
-           (MultiLineDocString
-            (HsDocStringNext)
-            (:|
-             (L
-              { T17544_kw.hs:22:9-34 }
-              (HsDocStringChunk
-               " Bad comment for clsmethod"))
-             []))
-           []))))])))]))
+      [])))]))
 
 
+
+T17544_kw.hs:22:5: warning: [GHC-94458] [-Winvalid-haddock]
+    A Haddock comment cannot appear in this position and will be ignored.

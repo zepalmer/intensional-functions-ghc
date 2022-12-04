@@ -502,8 +502,9 @@ instance HasHaddock (HsDecl GhcPs) where
                   tcdCtxt, tcdLName, tcdTyVars, tcdFixity, tcdFDs, tcdTkWhere,
                   tcdSigs, tcdMeths, tcdATs, tcdATDefs } <- decl
     = do
+        registerTokenHdkA tcdTkClass
         registerHdkA tcdLName
-        -- todo: register keyword location of 'where', see Note [Register keyword location]
+        traverse_ @Strict.Maybe registerTokenHdkA tcdTkWhere
         where_cls' <-
           addHaddockInterleaveItems tcdLayout (mkDocHsDecl tcdLayout) $
           flattenBindsAndSigs (tcdMeths, tcdSigs, tcdATs, tcdATDefs, [], [])
@@ -1157,6 +1158,13 @@ registerLocHdkA l = HdkA (getBufSpan l) (pure ())
 -- See Note [Adding Haddock comments to the syntax tree].
 registerHdkA :: GenLocated (SrcSpanAnn' a) e -> HdkA ()
 registerHdkA a = registerLocHdkA (getLocA a)
+
+-- Let the neighbours know about a token at this location.
+-- Similar to registerLocHdkA and registerHdkA.
+--
+-- See Note [Adding Haddock comments to the syntax tree].
+registerTokenHdkA :: LHsToken tok GhcPs -> HdkA ()
+registerTokenHdkA (L l _) = HdkA (getTokenBufSpan l) (pure ())
 
 -- Modify the action of a HdkA computation.
 hoistHdkA :: (HdkM a -> HdkM b) -> HdkA a -> HdkA b
