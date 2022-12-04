@@ -52,6 +52,7 @@ import GHC.Utils.Lexeme
 import GHC.Utils.Misc
 import GHC.Data.FastString
 import GHC.Utils.Panic
+import qualified GHC.Data.Strict as Strict
 
 import Language.Haskell.Syntax.Basic (FieldLabelString(..))
 
@@ -300,9 +301,12 @@ cvtDec (ClassD ctxt cl tvs fds decs)
             (failWith $ DefaultDataInstDecl adts')
         ; returnJustLA $ TyClD noExtField $
           ClassDecl { tcdCExt = (noAnn, NoAnnSortKey), tcdLayout = NoLayoutInfo
+                    , tcdTkClass = noHsTok
                     , tcdCtxt = mkHsContextMaybe cxt', tcdLName = tc', tcdTyVars = tvs'
                     , tcdFixity = Prefix
-                    , tcdFDs = fds', tcdSigs = Hs.mkClassOpSigs sigs'
+                    , tcdFDs = fds'
+                    , tcdTkWhere = Strict.Nothing
+                    , tcdSigs = Hs.mkClassOpSigs sigs'
                     , tcdMeths = binds'
                     , tcdATs = fams', tcdATDefs = at_defs', tcdDocs = [] }
                               -- no docs in TH ^^

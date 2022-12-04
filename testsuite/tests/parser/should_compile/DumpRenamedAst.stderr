@@ -1052,6 +1052,10 @@
          []}
         (VirtualBraces
          (3))
+        (L
+         (TokenLoc
+          (EpaSpan { DumpRenamedAst.hs:27:1-5 }))
+         (HsTok))
         (Nothing)
         (L
          (SrcSpanAnn (EpAnnNotUsed) { DumpRenamedAst.hs:27:7 })
@@ -1074,6 +1078,11 @@
              {Name: a})))])
         (Prefix)
         []
+        (Just
+         (L
+          (TokenLoc
+           (EpaSpan { DumpRenamedAst.hs:27:11-15 }))
+          (HsTok)))
         []
         {Bag(LocatedA (HsBind Name)):
          []}

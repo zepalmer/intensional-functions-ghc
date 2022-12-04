@@ -22,7 +22,7 @@ module GHC.Parser.PostProcess (
         mkHsIntegral, mkHsFractional, mkHsIsString,
         mkHsDo, mkSpliceDecl,
         mkRoleAnnotDecl,
-        mkClassDecl,
+        PsClassWhereClause(..), mkClassDecl,
         mkTyData, mkDataFamInst,
         mkTySynonym, mkTyFamInstEqn,
         mkStandaloneKindSig,
@@ -188,27 +188,41 @@ mkTyClD (L loc d) = L loc (TyClD noExtField d)
 mkInstD :: LInstDecl (GhcPass p) -> LHsDecl (GhcPass p)
 mkInstD (L loc d) = L loc (InstD noExtField d)
 
+data PsClassWhereClause =
+  PsClassWhereClause {
+    pcwcLayoutInfo :: !(LayoutInfo GhcPs),
+    pcwcTkWhere    :: !(Strict.Maybe (LHsToken "where" GhcPs)),
+    pcwcDecls      :: !(OrdList (LHsDecl GhcPs))    -- Reversed
+  }
+
 mkClassDecl :: SrcSpan
+            -> LHsToken "class" GhcPs
             -> Located (Maybe (LHsContext GhcPs), LHsType GhcPs)
             -> Located (a,[LHsFunDep GhcPs])
-            -> OrdList (LHsDecl GhcPs)
-            -> LayoutInfo GhcPs
+            -> PsClassWhereClause
             -> [AddEpAnn]
             -> P (LTyClDecl GhcPs)
 
-mkClassDecl loc' (L _ (mcxt, tycl_hdr)) fds where_cls layoutInfo annsIn
+mkClassDecl loc' tkClass (L _ (mcxt, tycl_hdr)) fds pcwc annsIn
   = do { let loc = noAnnSrcSpan loc'
-       ; (binds, sigs, ats, at_defs, _, docs) <- cvBindsAndSigs where_cls
+       ; let PsClassWhereClause
+               { pcwcLayoutInfo = layoutInfo
+               , pcwcTkWhere = tkWhere
+               , pcwcDecls = decls
+               } = pcwc
+       ; (binds, sigs, ats, at_defs, _, docs) <- cvBindsAndSigs decls
        ; (cls, tparams, fixity, ann) <- checkTyClHdr True tycl_hdr
        ; tyvars <- checkTyVars (text "class") whereDots cls tparams
        ; cs <- getCommentsFor (locA loc) -- Get any remaining comments
        ; let anns' = addAnns (EpAnn (spanAsAnchor $ locA loc) annsIn emptyComments) ann cs
        ; return (L loc (ClassDecl { tcdCExt = (anns', NoAnnSortKey)
                                   , tcdLayout = layoutInfo
+                                  , tcdTkClass = tkClass
                                   , tcdCtxt = mcxt
                                   , tcdLName = cls, tcdTyVars = tyvars
                                   , tcdFixity = fixity
                                   , tcdFDs = snd (unLoc fds)
+                                  , tcdTkWhere = tkWhere
                                   , tcdSigs = mkClassOpSigs sigs
                                   , tcdMeths = binds
                                   , tcdATs = ats, tcdATDefs = at_defs

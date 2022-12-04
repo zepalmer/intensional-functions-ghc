@@ -99,6 +99,7 @@ import Language.Haskell.Syntax.Extension
 import Language.Haskell.Syntax.Type
 import Language.Haskell.Syntax.Basic (Role)
 
+import qualified GHC.Data.Strict as Strict
 import GHC.Types.Basic (TopLevelFlag, OverlapMode, RuleName, Activation)
 import GHC.Types.ForeignCall (CType, CCallConv, Safety, Header, CLabelString, CCallTarget, CExportSpec)
 import GHC.Types.Fixity (LexicalFixity)
@@ -457,11 +458,13 @@ data TyClDecl pass
   | ClassDecl { tcdCExt    :: XClassDecl pass,         -- ^ Post renamer, FVs
                 tcdLayout  :: !(LayoutInfo pass),      -- ^ Explicit or virtual braces
                               -- See Note [Class LayoutInfo]
+                tcdTkClass :: !(LHsToken "class" pass), -- ^ The "class" token
                 tcdCtxt    :: Maybe (LHsContext pass), -- ^ Context...
                 tcdLName   :: LIdP pass,               -- ^ Name of the class
                 tcdTyVars  :: LHsQTyVars pass,         -- ^ Class type variables
                 tcdFixity  :: LexicalFixity, -- ^ Fixity used in the declaration
                 tcdFDs     :: [LHsFunDep pass],         -- ^ Functional deps
+                tcdTkWhere :: !(Strict.Maybe (LHsToken "where" pass)), -- ^ The "where" token
                 tcdSigs    :: [LSig pass],              -- ^ Methods' signatures
                 tcdMeths   :: LHsBinds pass,            -- ^ Default methods
                 tcdATs     :: [LFamilyDecl pass],       -- ^ Associated types;

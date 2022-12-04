@@ -1840,9 +1840,12 @@ rnTyClDecl (DataDecl
                           , tcdDExt     = rn_info }, fvs) } }
 
 rnTyClDecl (ClassDecl { tcdLayout = layout,
+                        tcdTkClass = tkClass,
                         tcdCtxt = context, tcdLName = lcls,
                         tcdTyVars = tyvars, tcdFixity = fixity,
-                        tcdFDs = fds, tcdSigs = sigs,
+                        tcdFDs = fds,
+                        tcdTkWhere = tkWhere,
+                        tcdSigs = sigs,
                         tcdMeths = mbinds, tcdATs = ats, tcdATDefs = at_defs,
                         tcdDocs = docs})
   = do  { lcls' <- lookupLocatedTopConstructorRnN lcls
@@ -1895,9 +1898,12 @@ rnTyClDecl (ClassDecl { tcdLayout = layout,
         ; let all_fvs = meth_fvs `plusFV` stuff_fvs `plusFV` fv_at_defs
         ; docs' <- traverse rnLDocDecl docs
         ; return (ClassDecl { tcdLayout = rnLayoutInfo layout,
+                              tcdTkClass = tkClass,
                               tcdCtxt = context', tcdLName = lcls',
                               tcdTyVars = tyvars', tcdFixity = fixity,
-                              tcdFDs = fds', tcdSigs = sigs',
+                              tcdFDs = fds',
+                              tcdTkWhere = tkWhere,
+                              tcdSigs = sigs',
                               tcdMeths = mbinds', tcdATs = ats', tcdATDefs = at_defs',
                               tcdDocs = docs', tcdCExt = all_fvs },
                   all_fvs ) }

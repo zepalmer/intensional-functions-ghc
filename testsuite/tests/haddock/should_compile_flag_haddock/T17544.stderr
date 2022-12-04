@@ -61,6 +61,10 @@
        (NoAnnSortKey))
       (VirtualBraces
        (3))
+      (L
+       (TokenLoc
+        (EpaSpan { T17544.hs:5:1-5 }))
+       (HsTok))
       (Nothing)
       (L
        (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:5:7-8 })
@@ -85,6 +89,11 @@
             {OccName: a}))))])
       (Prefix)
       []
+      (Just
+       (L
+        (TokenLoc
+         (EpaSpan { T17544.hs:5:12-16 }))
+        (HsTok)))
       [(L
         (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:6:3-16 })
         (ClassOpSig
@@ -198,6 +207,10 @@
        (NoAnnSortKey))
       (VirtualBraces
        (3))
+      (L
+       (TokenLoc
+        (EpaSpan { T17544.hs:9:1-5 }))
+       (HsTok))
       (Nothing)
       (L
        (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:9:7-8 })
@@ -222,6 +235,11 @@
             {OccName: a}))))])
       (Prefix)
       []
+      (Just
+       (L
+        (TokenLoc
+         (EpaSpan { T17544.hs:9:12-16 }))
+        (HsTok)))
       [(L
         (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:10:3-16 })
         (ClassOpSig
@@ -333,6 +351,10 @@
        (NoAnnSortKey))
       (VirtualBraces
        (3))
+      (L
+       (TokenLoc
+        (EpaSpan { T17544.hs:13:1-5 }))
+       (HsTok))
       (Nothing)
       (L
        (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:13:7-8 })
@@ -357,6 +379,11 @@
             {OccName: a}))))])
       (Prefix)
       []
+      (Just
+       (L
+        (TokenLoc
+         (EpaSpan { T17544.hs:13:12-16 }))
+        (HsTok)))
       [(L
         (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:14:3-16 })
         (ClassOpSig
@@ -471,6 +498,10 @@
        (NoAnnSortKey))
       (VirtualBraces
        (3))
+      (L
+       (TokenLoc
+        (EpaSpan { T17544.hs:17:1-5 }))
+       (HsTok))
       (Nothing)
       (L
        (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:17:7-8 })
@@ -495,6 +526,11 @@
             {OccName: a}))))])
       (Prefix)
       []
+      (Just
+       (L
+        (TokenLoc
+         (EpaSpan { T17544.hs:17:12-16 }))
+        (HsTok)))
       [(L
         (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:18:3-16 })
         (ClassOpSig
@@ -669,6 +705,10 @@
         (TokenLoc
          (EpaSpan { T17544.hs:22:30 }))
         (HsTok)))
+      (L
+       (TokenLoc
+        (EpaSpan { T17544.hs:22:1-5 }))
+       (HsTok))
       (Nothing)
       (L
        (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:22:7-8 })
@@ -693,6 +733,11 @@
             {OccName: a}))))])
       (Prefix)
       []
+      (Just
+       (L
+        (TokenLoc
+         (EpaSpan { T17544.hs:22:12-16 }))
+        (HsTok)))
       []
       {Bag(LocatedA (HsBind GhcPs)):
        []}
@@ -946,6 +991,10 @@
         (TokenLoc
          (EpaSpan { T17544.hs:28:30 }))
         (HsTok)))
+      (L
+       (TokenLoc
+        (EpaSpan { T17544.hs:28:1-5 }))
+       (HsTok))
       (Nothing)
       (L
        (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:28:7-8 })
@@ -970,6 +1019,11 @@
             {OccName: a}))))])
       (Prefix)
       []
+      (Just
+       (L
+        (TokenLoc
+         (EpaSpan { T17544.hs:28:12-16 }))
+        (HsTok)))
       []
       {Bag(LocatedA (HsBind GhcPs)):
        []}
@@ -1223,6 +1277,10 @@
         (TokenLoc
          (EpaSpan { T17544.hs:34:30 }))
         (HsTok)))
+      (L
+       (TokenLoc
+        (EpaSpan { T17544.hs:34:1-5 }))
+       (HsTok))
       (Nothing)
       (L
        (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:34:7-8 })
@@ -1247,6 +1305,11 @@
             {OccName: a}))))])
       (Prefix)
       []
+      (Just
+       (L
+        (TokenLoc
+         (EpaSpan { T17544.hs:34:12-16 }))
+        (HsTok)))
       []
       {Bag(LocatedA (HsBind GhcPs)):
        []}
@@ -1500,6 +1563,10 @@
         (TokenLoc
          (EpaSpan { T17544.hs:40:30 }))
         (HsTok)))
+      (L
+       (TokenLoc
+        (EpaSpan { T17544.hs:40:1-5 }))
+       (HsTok))
       (Nothing)
       (L
        (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:40:7-8 })
@@ -1524,6 +1591,11 @@
             {OccName: a}))))])
       (Prefix)
       []
+      (Just
+       (L
+        (TokenLoc
+         (EpaSpan { T17544.hs:40:12-16 }))
+        (HsTok)))
       []
       {Bag(LocatedA (HsBind GhcPs)):
        []}
@@ -1777,6 +1849,10 @@
         (TokenLoc
          (EpaSpan { T17544.hs:46:30 }))
         (HsTok)))
+      (L
+       (TokenLoc
+        (EpaSpan { T17544.hs:46:1-5 }))
+       (HsTok))
       (Nothing)
       (L
        (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:46:7-8 })
@@ -1801,6 +1877,11 @@
             {OccName: a}))))])
       (Prefix)
       []
+      (Just
+       (L
+        (TokenLoc
+         (EpaSpan { T17544.hs:46:12-16 }))
+        (HsTok)))
       []
       {Bag(LocatedA (HsBind GhcPs)):
        []}
@@ -2054,6 +2135,10 @@
         (TokenLoc
          (EpaSpan { T17544.hs:52:32 }))
         (HsTok)))
+      (L
+       (TokenLoc
+        (EpaSpan { T17544.hs:52:1-5 }))
+       (HsTok))
       (Nothing)
       (L
        (SrcSpanAnn (EpAnnNotUsed) { T17544.hs:52:7-9 })
@@ -2078,6 +2163,11 @@
             {OccName: a}))))])
       (Prefix)
       []
+      (Just
+       (L
+        (TokenLoc
+         (EpaSpan { T17544.hs:52:13-17 }))
+        (HsTok)))
       []
       {Bag(LocatedA (HsBind GhcPs)):
        []}
