@@ -425,7 +425,7 @@ rnPats ctxt pats thing_inside
           --    complain *twice* about duplicates e.g. f (x,x) = ...
           --
           -- See Note [Don't report shadowing for pattern synonyms]
-        ; let bndrs = collectPatsBinders CollNoDictBinders (toList pats')
+        ; let bndrs = collectPatsBinders CollVarTyVarBinders (toList pats')
         ; addErrCtxt doc_pat $
           if isPatSynCtxt ctxt
              then checkDupNames bndrs

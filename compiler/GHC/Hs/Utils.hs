@@ -1136,6 +1136,8 @@ data CollectFlag p where
     CollNoDictBinders   :: CollectFlag p
     -- | Collect evidence binders
     CollWithDictBinders :: CollectFlag GhcTc
+    -- | Collect variable and type variable binders
+    CollVarTyVarBinders :: CollectFlag GhcRn
 
 collect_lpat :: forall p. CollectPass p
              => CollectFlag p
@@ -1166,12 +1168,28 @@ collect_pat flag pat bndrs = case pat of
   SigPat _ pat _        -> collect_lpat flag pat bndrs
   XPat ext              -> collectXXPat @p flag ext bndrs
   SplicePat ext _       -> collectXSplicePat @p flag ext bndrs
-  EmbTyPat _ _ _        -> bndrs   -- TODO (int-index): do I need to return the type variable binder?
+  EmbTyPat _ _ ltypat   -> case flag of
+    CollNoDictBinders   -> bndrs
+    CollWithDictBinders -> bndrs
+    CollVarTyVarBinders -> collect_ltypat (hswc_body ltypat) bndrs
   -- See Note [Dictionary binders in ConPatOut]
   ConPat {pat_args=ps}  -> case flag of
     CollNoDictBinders   -> foldr (collect_lpat flag) bndrs (hsConPatArgs ps)
     CollWithDictBinders -> foldr (collect_lpat flag) bndrs (hsConPatArgs ps)
                            ++ collectEvBinders (cpt_binds (pat_con_ext pat))
+    CollVarTyVarBinders -> foldr (collect_lpat flag) bndrs (hsConPatArgs ps)
+
+collect_ltypat :: LHsType GhcRn -> [Name] -> [Name]
+collect_ltypat ltypat = collect_typat (unLoc ltypat)
+
+collect_typat :: HsType GhcRn -> [Name] -> [Name]
+collect_typat typat bndrs = case typat of
+  HsTyVar _ _ (L _ name)
+    | isTyVarName name -> name : bndrs
+    | otherwise        -> bndrs
+  HsParTy _ t    -> collect_ltypat t bndrs
+  HsWildCardTy _ -> bndrs
+  _ -> panic "collect_typat: unsupported type pattern"
 
 collectEvBinders :: TcEvBinds -> [Id]
 collectEvBinders (EvBinds bs)   = foldr add_ev_bndr [] bs
