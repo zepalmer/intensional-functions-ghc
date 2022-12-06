@@ -857,12 +857,16 @@ unitdecl :: { LHsUnitDecl PackageName }
                    NotBoot -> HsSrcFile
                    IsBoot  -> HsBootFile)
                  (reLoc $3)
-                 (sL1 $1 (HsModule (XModulePs noAnn (thdOf3 $7) $4 Nothing) (Just $3) $5 (fst $ sndOf3 $7) (snd $ sndOf3 $7))) }
+                 (sL1 $1 (HsModule (XModulePs noAnn (thdOf3 $7) $4 Nothing)
+                                   (HsModTk (hsTok $1) (hsTok $6))
+                                   (Just $3) $5 (fst $ sndOf3 $7) (snd $ sndOf3 $7))) }
         | 'signature' modid maybemodwarning maybeexports 'where' body
              { sL1 $1 $ DeclD
                  HsigFile
                  (reLoc $2)
-                 (sL1 $1 (HsModule (XModulePs noAnn (thdOf3 $6) $3 Nothing) (Just $2) $4 (fst $ sndOf3 $6) (snd $ sndOf3 $6))) }
+                 (sL1 $1 (HsModule (XModulePs noAnn (thdOf3 $6) $3 Nothing)
+                                   (HsSigTk (hsTok $1) (hsTok $5))
+                                   (Just $2) $4 (fst $ sndOf3 $6) (snd $ sndOf3 $6))) }
         | 'dependency' unitid mayberns
              { sL1 $1 $ IncludeD (IncludeDecl { idUnitId = $2
                                               , idModRenaming = $3
@@ -888,6 +892,7 @@ signature :: { Located (HsModule GhcPs) }
                 acs (\cs-> (L loc (HsModule (XModulePs
                                                (EpAnn (spanAsAnchor loc) (AnnsModule [mj AnnSignature $1, mj AnnWhere $5] (fstOf3 $6)) cs)
                                                (thdOf3 $6) $3 Nothing)
+                                            (HsSigTk (hsTok $1) (hsTok $5))
                                             (Just $2) $4 (fst $ sndOf3 $6)
                                             (snd $ sndOf3 $6)))
                     ) }
@@ -898,6 +903,7 @@ module :: { Located (HsModule GhcPs) }
                 acsFinal (\cs -> (L loc (HsModule (XModulePs
                                                      (EpAnn (spanAsAnchor loc) (AnnsModule [mj AnnModule $1, mj AnnWhere $5] (fstOf3 $6)) cs)
                                                      (thdOf3 $6) $3 Nothing)
+                                                  (HsModTk (hsTok $1) (hsTok $5))
                                                   (Just $2) $4 (fst $ sndOf3 $6)
                                                   (snd $ sndOf3 $6))
                     )) }
@@ -906,6 +912,7 @@ module :: { Located (HsModule GhcPs) }
                    acsFinal (\cs -> (L loc (HsModule (XModulePs
                                                         (EpAnn (spanAsAnchor loc) (AnnsModule [] (fstOf3 $1)) cs)
                                                         (thdOf3 $1) Nothing Nothing)
+                                                     HsNoModTk
                                                      Nothing Nothing
                                                      (fst $ sndOf3 $1) (snd $ sndOf3 $1)))) }
 
@@ -958,6 +965,7 @@ header  :: { Located (HsModule GhcPs) }
                    acs (\cs -> (L loc (HsModule (XModulePs
                                                    (EpAnn (spanAsAnchor loc) (AnnsModule [mj AnnModule $1,mj AnnWhere $5] (AnnList Nothing Nothing Nothing [] [])) cs)
                                                    NoLayoutInfo $3 Nothing)
+                                                (HsModTk (hsTok $1) (hsTok $5))
                                                 (Just $2) $4 $6 []
                           ))) }
         | 'signature' modid maybemodwarning maybeexports 'where' header_body
@@ -965,11 +973,12 @@ header  :: { Located (HsModule GhcPs) }
                    acs (\cs -> (L loc (HsModule (XModulePs
                                                    (EpAnn (spanAsAnchor loc) (AnnsModule [mj AnnModule $1,mj AnnWhere $5] (AnnList Nothing Nothing Nothing [] [])) cs)
                                                    NoLayoutInfo $3 Nothing)
+                                                (HsSigTk (hsTok $1) (hsTok $5))
                                                 (Just $2) $4 $6 []
                           ))) }
         | header_body2
                 {% fileSrcSpan >>= \ loc ->
-                   return (L loc (HsModule (XModulePs noAnn NoLayoutInfo Nothing Nothing) Nothing Nothing $1 [])) }
+                   return (L loc (HsModule (XModulePs noAnn NoLayoutInfo Nothing Nothing) HsNoModTk Nothing Nothing $1 [])) }
 
 header_body :: { [LImportDecl GhcPs] }
         :  '{'            header_top            { $2 }

@@ -804,6 +804,7 @@ summariseRequirement pn mod_name = do
                             hsmodDeprecMessage = Nothing,
                             hsmodHaddockModHeader = Nothing
                                              },
+                        hsmodHeaderTokens = HsSigTk noHsTok noHsTok,
                         hsmodName = Just (L (noAnnSrcSpan loc) mod_name),
                         hsmodExports = Nothing,
                         hsmodImports = [],
