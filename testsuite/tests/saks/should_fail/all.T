@@ -32,6 +32,6 @@ test('T16725', normal, compile_fail, [''])
 test('T16826', normal, compile_fail, [''])
 test('T16756b', normal, compile_fail, [''])
 test('T16758', normal, compile_fail, [''])
-test('T18863a', normal, compile_fail, [''])
+test('T18863a', expect_broken(22326), compile_fail, ['']) # TODO (int-index): ticket for specificity subsumption
 test('T18863b', normal, compile_fail, [''])
 test('T20916', normal, compile_fail, [''])
