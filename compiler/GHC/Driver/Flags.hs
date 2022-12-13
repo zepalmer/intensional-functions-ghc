@@ -302,6 +302,7 @@ data GeneralFlag
    | Opt_OmitInterfacePragmas
    | Opt_ExposeAllUnfoldings
    | Opt_WriteInterface -- forces .hi files to be written even with -fno-code
+   | Opt_WriteSelfRecompInfo
    | Opt_WriteHie -- generate .hie files
 
    -- profiling opts
@@ -624,6 +625,7 @@ data WarningFlag =
    | Opt_WarnGADTMonoLocalBinds                      -- Since 9.4
    | Opt_WarnTypeEqualityOutOfScope                  -- Since 9.4
    | Opt_WarnTypeEqualityRequiresOperators           -- Since 9.4
+   | Opt_WarnReifyModuleMissingInfo                  -- Since 9.6
    deriving (Eq, Ord, Show, Enum)
 
 -- | Return the names of a WarningFlag
@@ -729,6 +731,7 @@ warnFlagNames wflag = case wflag of
   Opt_WarnGADTMonoLocalBinds                      -> "gadt-mono-local-binds" :| []
   Opt_WarnTypeEqualityOutOfScope                  -> "type-equality-out-of-scope" :| []
   Opt_WarnTypeEqualityRequiresOperators           -> "type-equality-requires-operators" :| []
+  Opt_WarnReifyModuleMissingInfo                  -> "reify-module-missing-info" :| []
 
 -- -----------------------------------------------------------------------------
 -- Standard sets of warning options
@@ -824,7 +827,8 @@ standardWarnings -- see Note [Documenting warning flags]
         Opt_WarnForallIdentifier,
         Opt_WarnUnicodeBidirectionalFormatCharacters,
         Opt_WarnGADTMonoLocalBinds,
-        Opt_WarnTypeEqualityRequiresOperators
+        Opt_WarnTypeEqualityRequiresOperators,
+        Opt_WarnReifyModuleMissingInfo
       ]
 
 -- | Things you get with -W

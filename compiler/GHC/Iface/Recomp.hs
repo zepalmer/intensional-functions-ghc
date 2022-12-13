@@ -171,6 +171,7 @@ data RecompReason
   = UnitDepRemoved UnitId
   | ModulePackageChanged FastString
   | SourceFileChanged
+  | NoSelfRecompInfo
   | ThisUnitIdChanged
   | ImpurePlugin
   | PluginsChanged
@@ -203,6 +204,7 @@ instance Outputable RecompReason where
     UnitDepRemoved uid       -> ppr uid <+> text "removed"
     ModulePackageChanged s   -> ftext s <+> text "package changed"
     SourceFileChanged        -> text "Source file changed"
+    NoSelfRecompInfo         -> text "Old interface lacks recompilation info"
     ThisUnitIdChanged        -> text "-this-unit-id changed"
     ImpurePlugin             -> text "Impure plugin forced recompilation"
     PluginsChanged           -> text "Plugins changed"
@@ -373,6 +375,8 @@ checkVersions hsc_env mod_summary iface
        -- but we ALSO must make sure the instantiation matches up.  See
        -- test case bkpcabal04!
        ; hsc_env <- getTopEnv
+       ; if not (isSelfRecompilationInterface iface)
+            then return $ outOfDateItemBecause NoSelfRecompInfo Nothing else do {
        ; if mi_src_hash iface /= ms_hs_hash mod_summary
             then return $ outOfDateItemBecause SourceFileChanged Nothing else do {
        ; if not (isHomeModule home_unit (mi_module iface))
@@ -407,7 +411,7 @@ checkVersions hsc_env mod_summary iface
                              | u <- mi_usages iface]
        ; case recomp of (NeedsRecompile reason) -> return $ OutOfDateItem reason (Just iface) ; _ -> do {
        ; return $ UpToDateItem iface
-    }}}}}}}
+    }}}}}}}}
   where
     logger = hsc_logger hsc_env
     dflags = hsc_dflags hsc_env
@@ -1210,18 +1214,6 @@ addFingerprints hsc_env iface0
        sorted_extra_decls :: Maybe [IfaceBindingX IfaceMaybeRhs IfaceTopBndrInfo]
        sorted_extra_decls = sortOn binding_key <$> mi_extra_decls iface0
 
-   -- the flag hash depends on:
-   --   - (some of) dflags
-   -- it returns two hashes, one that shouldn't change
-   -- the abi hash and one that should
-   flag_hash <- fingerprintDynFlags hsc_env this_mod putNameLiterally
-
-   opt_hash <- fingerprintOptFlags dflags putNameLiterally
-
-   hpc_hash <- fingerprintHpcFlags dflags putNameLiterally
-
-   plugin_hash <- fingerprintPlugins (hsc_plugins hsc_env)
-
    -- the ABI hash depends on:
    --   - decls
    --   - export list
@@ -1233,29 +1225,18 @@ addFingerprints hsc_env iface0
                        export_hash,  -- includes orphan_hash
                        mi_warns iface0)
 
-   -- The interface hash depends on:
-   --   - the ABI hash, plus
-   --   - the source file hash,
-   --   - the module level annotations,
-   --   - usages
-   --   - deps (home and external packages, dependent files)
-   --   - hpc
-   iface_hash <- computeFingerprint putNameLiterally
-                      (mod_hash,
-                       mi_src_hash iface0,
-                       ann_fn (mkVarOccFS (fsLit "module")),  -- See mkIfaceAnnCache
-                       mi_usages iface0,
-                       sorted_deps,
-                       mi_hpc iface0)
+   -- the flag hash depends on:
+   --   - (some of) dflags
+   -- it returns two hashes, one that shouldn't change
+   -- the abi hash and one that should
+   self_recomp <- if gopt Opt_WriteSelfRecompInfo dflags
+                    then mkSelfRecomp mod_hash sorted_deps
+                    else return NoSelfRecompBackend
 
    let
     final_iface_exts = ModIfaceBackend
-      { mi_iface_hash  = iface_hash
+      { mi_self_recomp_backend_info = self_recomp
       , mi_mod_hash    = mod_hash
-      , mi_flag_hash   = flag_hash
-      , mi_opt_hash    = opt_hash
-      , mi_hpc_hash    = hpc_hash
-      , mi_plugin_hash = plugin_hash
       , mi_orphan      = not (   all ifRuleAuto orph_rules
                                    -- See Note [Orphans and auto-generated rules]
                               && null orph_insts
@@ -1279,6 +1260,38 @@ addFingerprints hsc_env iface0
     (non_orph_rules, orph_rules) = mkOrphMap ifRuleOrph    (mi_rules iface0)
     (non_orph_fis,   orph_fis)   = mkOrphMap ifFamInstOrph (mi_fam_insts iface0)
     ann_fn = mkIfaceAnnCache (mi_anns iface0)
+
+    mkSelfRecomp mod_hash sorted_deps = do
+
+      flag_hash <- fingerprintDynFlags hsc_env this_mod putNameLiterally
+
+      opt_hash <- fingerprintOptFlags dflags putNameLiterally
+
+      hpc_hash <- fingerprintHpcFlags dflags putNameLiterally
+
+      plugin_hash <- fingerprintPlugins (hsc_plugins hsc_env)
+
+      -- The interface hash depends on:
+      --   - the ABI hash, plus
+      --   - the source file hash,
+      --   - the module level annotations,
+      --   - usages
+      --   - deps (home and external packages, dependent files)
+      --   - hpc
+      iface_hash <- computeFingerprint putNameLiterally
+                         (mod_hash,
+                          mi_src_hash iface0,
+                          ann_fn (mkVarOccFS (fsLit "module")),  -- See mkIfaceAnnCache
+                          mi_usages iface0,
+                          sorted_deps,
+                          mi_hpc iface0)
+
+      return (ModIfaceSelfRecompBackend
+                                 { mi_sr_flag_hash = flag_hash
+                                 , mi_sr_hpc_hash = hpc_hash
+                                 , mi_sr_opt_hash = opt_hash
+                                 , mi_sr_iface_hash = iface_hash
+                                 , mi_sr_plugin_hash = plugin_hash })
 
 -- | Retrieve the orphan hashes 'mi_orphan_hash' for a list of modules
 -- (in particular, the orphan modules which are transitively imported by the

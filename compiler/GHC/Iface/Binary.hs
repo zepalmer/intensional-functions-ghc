@@ -45,7 +45,6 @@ import GHC.Types.Name.Cache
 import GHC.Types.SrcLoc
 import GHC.Platform
 import GHC.Settings.Constants
-import GHC.Utils.Fingerprint
 
 import Data.Array
 import Data.Array.IO
@@ -75,7 +74,7 @@ readBinIfaceHeader
   -> CheckHiWay
   -> TraceBinIFace
   -> FilePath
-  -> IO (Fingerprint, BinHandle)
+  -> IO BinHandle
 readBinIfaceHeader profile _name_cache checkHiWay traceBinIFace hi_path = do
     let platform = profilePlatform profile
 
@@ -117,8 +116,7 @@ readBinIfaceHeader profile _name_cache checkHiWay traceBinIFace hi_path = do
     when (checkHiWay == CheckHiWay) $
         errorOnMismatch "mismatched interface file profile tag" tag check_tag
 
-    src_hash <- get bh
-    pure (src_hash, bh)
+    pure bh
 
 -- | Read an interface file.
 readBinIface
@@ -129,7 +127,7 @@ readBinIface
   -> FilePath
   -> IO ModIface
 readBinIface profile name_cache checkHiWay traceBinIface hi_path = do
-    (src_hash, bh) <- readBinIfaceHeader profile name_cache checkHiWay traceBinIface hi_path
+    bh <- readBinIfaceHeader profile name_cache checkHiWay traceBinIface hi_path
 
     extFields_p <- get bh
 
@@ -140,7 +138,6 @@ readBinIface profile name_cache checkHiWay traceBinIface hi_path = do
 
     return mod_iface
       { mi_ext_fields = extFields
-      , mi_src_hash = src_hash
       }
 
 -- | This performs a get action after reading the dictionary and symbol
@@ -182,7 +179,6 @@ writeBinIface profile traceBinIface hi_path mod_iface = do
     put_ bh (show hiVersion)
     let tag = profileBuildTag profile
     put_  bh tag
-    put_  bh (mi_src_hash mod_iface)
 
     extFields_p_p <- tellBin bh
     put_ bh extFields_p_p

@@ -13,6 +13,7 @@ module GHC.Iface.Make
    ( mkPartialIface
    , mkFullIface
    , mkIfaceTc
+   , mkRecompUsageInfo
    , mkIfaceExports
    , coAxiomToIfaceDecl
    , tyThingToIfaceDecl -- Converting things to their Iface equivalents
@@ -203,14 +204,11 @@ mkIfaceTc hsc_env safe_mode mod_details mod_summary mb_program
                       tcg_imports = imports,
                       tcg_rdr_env = rdr_env,
                       tcg_fix_env = fix_env,
-                      tcg_merged = merged,
                       tcg_warns = warns,
                       tcg_hpc = other_hpc_info,
-                      tcg_th_splice_used = tc_splice_used,
-                      tcg_dependent_files = dependent_files
+                      tcg_th_splice_used = tc_splice_used
                     }
   = do
-          let used_names = mkUsedNames tc_result
           let pluginModules = map lpModule (loadedPlugins (hsc_plugins hsc_env))
           let home_unit = hsc_home_unit hsc_env
           let deps = mkDependencies home_unit
@@ -219,47 +217,58 @@ mkIfaceTc hsc_env safe_mode mod_details mod_summary mb_program
                                     (map mi_module pluginModules)
           let hpc_info = emptyHpcInfo other_hpc_info
           used_th <- readIORef tc_splice_used
-          dep_files <- (readIORef dependent_files)
-          (needed_links, needed_pkgs) <- readIORef (tcg_th_needed_deps tc_result)
-          let uc = initUsageConfig hsc_env
-              plugins = hsc_plugins hsc_env
-              fc = hsc_FC hsc_env
-              unit_env = hsc_unit_env hsc_env
-          -- Do NOT use semantic module here; this_mod in mkUsageInfo
-          -- is used solely to decide if we should record a dependency
-          -- or not.  When we instantiate a signature, the semantic
-          -- module is something we want to record dependencies for,
-          -- but if you pass that in here, we'll decide it's the local
-          -- module and does not need to be recorded as a dependency.
-          -- See Note [Identity versus semantic module]
-          usages <- initIfaceLoad hsc_env $ mkUsageInfo uc plugins fc unit_env this_mod (imp_mods imports) used_names
-                      dep_files merged needed_links needed_pkgs
 
+          usage <- mkRecompUsageInfo hsc_env tc_result
           docs <- extractDocs (ms_hspp_opts mod_summary) tc_result
 
           let partial_iface = mkIface_ hsc_env
                    this_mod (fromMaybe [] mb_program) hsc_src
                    used_th deps rdr_env
                    fix_env warns hpc_info
-                   (imp_trust_own_pkg imports) safe_mode usages
+                   (imp_trust_own_pkg imports) safe_mode usage
                    docs mod_summary
                    mod_details
 
           mkFullIface hsc_env partial_iface Nothing Nothing
+
+mkRecompUsageInfo :: HscEnv -> TcGblEnv -> IO (Maybe [Usage])
+mkRecompUsageInfo hsc_env tc_result = do
+  let dflags = hsc_dflags hsc_env
+  if not (gopt Opt_WriteSelfRecompInfo dflags)
+    then return Nothing
+    else do
+     let used_names = mkUsedNames tc_result
+     dep_files <- (readIORef (tcg_dependent_files tc_result))
+     (needed_links, needed_pkgs) <- readIORef (tcg_th_needed_deps tc_result)
+     let uc = initUsageConfig hsc_env
+         plugins = hsc_plugins hsc_env
+         fc = hsc_FC hsc_env
+         unit_env = hsc_unit_env hsc_env
+
+     -- Do NOT use semantic module here; this_mod in mkUsageInfo
+     -- is used solely to decide if we should record a dependency
+     -- or not.  When we instantiate a signature, the semantic
+     -- module is something we want to record dependencies for,
+     -- but if you pass that in here, we'll decide it's the local
+     -- module and does not need to be recorded as a dependency.
+     -- See Note [Identity versus semantic module]
+     usages <- initIfaceLoad hsc_env $ mkUsageInfo uc plugins fc unit_env (tcg_mod tc_result) (imp_mods (tcg_imports tc_result)) used_names
+                 dep_files (tcg_merged tc_result) needed_links needed_pkgs
+     return (Just usages)
 
 mkIface_ :: HscEnv -> Module -> CoreProgram -> HscSource
          -> Bool -> Dependencies -> GlobalRdrEnv
          -> NameEnv FixItem -> Warnings GhcRn -> HpcInfo
          -> Bool
          -> SafeHaskellMode
-         -> [Usage]
+         -> Maybe [Usage]
          -> Maybe Docs
          -> ModSummary
          -> ModDetails
          -> PartialModIface
 mkIface_ hsc_env
          this_mod core_prog hsc_src used_th deps rdr_env fix_env src_warns
-         hpc_info pkg_trust_req safe_mode usages
+         hpc_info pkg_trust_req safe_mode musages
          docs mod_summary
          ModDetails{  md_insts     = insts,
                       md_fam_insts = fam_insts,
@@ -307,6 +316,9 @@ mkIface_ hsc_env
         trust_info  = setSafeMode safe_mode
         annotations = map mkIfaceAnnotation anns
         icomplete_matches = map mkIfaceCompleteMatch complete_matches
+        self_recomp = case musages of
+                        Nothing -> NoSelfRecomp
+                        Just usages -> ModIfaceSelfRecomp (ms_hs_hash mod_summary) usages
 
     ModIface {
           mi_module      = this_mod,
@@ -317,7 +329,6 @@ mkIface_ hsc_env
                             else Just semantic_mod,
           mi_hsc_src     = hsc_src,
           mi_deps        = deps,
-          mi_usages      = usages,
           mi_exports     = mkIfaceExports exports,
 
           -- Sort these lexicographically, so that
@@ -340,7 +351,7 @@ mkIface_ hsc_env
           mi_docs        = docs,
           mi_final_exts  = (),
           mi_ext_fields  = emptyExtensibleFields,
-          mi_src_hash = ms_hs_hash mod_summary
+          mi_self_recomp_info = self_recomp
           }
   where
      cmp_rule     = lexicalCompareFS `on` ifRuleName

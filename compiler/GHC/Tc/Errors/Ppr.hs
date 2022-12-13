@@ -1223,6 +1223,9 @@ instance Diagnostic TcRnMessage where
     TcRnSectionWithoutParentheses expr -> mkSimpleDecorated $
       hang (text "A section must be enclosed in parentheses")
          2 (text "thus:" <+> (parens (ppr expr)))
+    TcRnReifyModuleMissingInfo m -> mkSimpleDecorated $
+      vcat [ (ppr m) <+> text "can't be reified due to missing information in its interface file."
+           , text "Possible cause:" <+> ppr m <+> text "was compiled with -fno-write-self-recomp-info" ]
 
 
   diagnosticReason = \case
@@ -1628,6 +1631,8 @@ instance Diagnostic TcRnMessage where
       -> ErrorWithoutFlag
     TcRnIllegalTupleSection{}
       -> ErrorWithoutFlag
+    TcRnReifyModuleMissingInfo {} ->
+      WarningWithFlag Opt_WarnReifyModuleMissingInfo
 
   diagnosticHints = \case
     TcRnUnknownMessage m
@@ -2037,6 +2042,7 @@ instance Diagnostic TcRnMessage where
       -> noHints
     TcRnIllegalTupleSection{}
       -> [suggestExtension LangExt.TupleSections]
+    TcRnReifyModuleMissingInfo {} -> noHints
 
 
   diagnosticCode = constructorCode

@@ -2762,6 +2762,12 @@ data TcRnMessage where
   -}
   TcRnSectionWithoutParentheses :: HsExpr GhcPs -> TcRnMessage
 
+  {-| TcRnReifyModuleMissingInfo is a warning triggered by attempting to
+      call reifyModule on a module whose interface file lacks the necessary information
+      to satisfy the query. This normally occurs when the module is compiled with `-fno-write-self-recomp-info`.
+  -}
+  TcRnReifyModuleMissingInfo:: Module -> TcRnMessage
+
   deriving Generic
 
 -- | Things forbidden in @type data@ declarations.

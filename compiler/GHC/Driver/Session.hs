@@ -3327,7 +3327,8 @@ wWarningFlagsDeps = mconcat [
   warnSpec    Opt_WarnUnicodeBidirectionalFormatCharacters,
   warnSpec    Opt_WarnGADTMonoLocalBinds,
   warnSpec    Opt_WarnTypeEqualityOutOfScope,
-  warnSpec    Opt_WarnTypeEqualityRequiresOperators
+  warnSpec    Opt_WarnTypeEqualityRequiresOperators,
+  warnSpec    Opt_WarnReifyModuleMissingInfo
  ]
 
 -- | These @-\<blah\>@ flags can all be reversed with @-no-\<blah\>@
@@ -3486,6 +3487,7 @@ fFlagsDeps = [
   flagSpec "use-rpaths"                       Opt_RPath,
   flagSpec "write-interface"                  Opt_WriteInterface,
   flagSpec "write-if-simplified-core"         Opt_WriteIfSimplifiedCore,
+  flagSpec "write-self-recomp-info"           Opt_WriteSelfRecompInfo,
   flagSpec "write-ide-info"                   Opt_WriteHie,
   flagSpec "unbox-small-strict-fields"        Opt_UnboxSmallStrictFields,
   flagSpec "unbox-strict-fields"              Opt_UnboxStrictFields,
@@ -3809,7 +3811,9 @@ defaultFlags settings
       Opt_DumpWithWays,
       Opt_CompactUnwind,
       Opt_ShowErrorContext,
-      Opt_SuppressStgReps
+      Opt_SuppressStgReps,
+      Opt_WriteSelfRecompInfo
+
     ]
 
     ++ [f | (ns,f) <- optLevelFlags, 0 `elem` ns]
