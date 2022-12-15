@@ -146,6 +146,10 @@ GHC.Iface.Ext.Fields
 GHC.Iface.Recomp.Binary
 GHC.Iface.Syntax
 GHC.Iface.Type
+GHC.JS.Make
+GHC.JS.Ppr
+GHC.JS.Syntax
+GHC.JS.Transform
 GHC.Linker.Static.Utils
 GHC.Linker.Types
 GHC.Parser
@@ -190,6 +194,9 @@ GHC.Stg.Lift.Types
 GHC.Stg.Syntax
 GHC.StgToCmm.Config
 GHC.StgToCmm.Types
+GHC.StgToJS.Linker.Types
+GHC.StgToJS.Object
+GHC.StgToJS.Types
 GHC.SysTools.BaseDir
 GHC.SysTools.Terminal
 GHC.Tc.Errors.Hole.FitTypes

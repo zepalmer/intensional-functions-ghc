@@ -47,6 +47,7 @@ import Data.Array
 import Data.Monoid
 import Data.Char (toLower, toUpper)
 import qualified Data.Bits          as Bits
+import qualified Data.ByteString.Lazy.Char8 as BLC
 
 -- | The garbageCollector resets registers and result variables.
 garbageCollector :: JStat
@@ -311,6 +312,10 @@ rtsDecls = jsSaturate (Just "h$RTSD") $
           -- stg registers
           , declRegs
           , declRets]
+
+-- | Get the generated part of the RTS
+generatedRTS :: StgToJSConfig -> BLC.ByteString
+generatedRTS cfg = BLC.pack rtsDeclsText <> BLC.pack (rtsText cfg)
 
 -- | print the embedded RTS to a String
 rtsText :: StgToJSConfig -> String

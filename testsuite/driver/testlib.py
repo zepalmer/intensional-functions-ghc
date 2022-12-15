@@ -237,6 +237,10 @@ def req_profiling( name, opts ):
     if not config.have_profiling:
         opts.expect = 'fail'
 
+    # JS backend doesn't support profiling yet
+    if arch("js"):
+        opts.expect = 'fail'
+
 def req_dynamic_lib_support( name, opts ):
     '''
     Require that the platform have shared object support (N.B. this doesn't
@@ -256,7 +260,16 @@ def req_dynamic_hs( name, opts ):
 def req_interp( name, opts ):
     if not config.have_interp or isCross():
         opts.expect = 'fail'
-    # JS backend doesn't provide an interpreter yet
+
+def req_bco( name, opts ):
+    '''
+    Require support for ByteCode
+    '''
+
+    # Requires the interpreter
+    req_interp(name, opts)
+
+    # JS backend doesn't support ByteCode either
     js_skip(name, opts)
 
 def req_rts_linker( name, opts ):
@@ -286,6 +299,13 @@ def req_ffi_exports( name, opts):
     # JS backend doesn't support FFI exports (yet)
     js_skip(name, opts)
 
+def req_asm( name, opts):
+    """
+    Mark a test as requiring LangAsm support
+    """
+    # JS backend doesn't support asm
+    js_skip(name, opts)
+
 def req_th( name, opts ):
     """
     Mark a test as requiring TemplateHaskell. In addition to having interpreter
@@ -293,7 +313,13 @@ def req_th( name, opts ):
     when GHC is dynamically-linked since we can't load profiled objects in this
     case.
     """
-    req_interp(name, opts)
+
+    # The JS target always supports TH, even in the stage1 compiler
+    # However it doesn't support the "Interpreter" yet (GHCi).
+    # So specifically enables TH here for JS.
+    if arch("js"):
+        return normal;
+
     if ghc_dynamic():
         return _omit_ways(name, opts, ['profasm', 'profthreaded'])
 
