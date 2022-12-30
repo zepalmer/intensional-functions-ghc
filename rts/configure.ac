@@ -55,3 +55,32 @@ cat $srcdir/../mk/config.h ghcautoconf.h.autoconf | sed \
    >> include/ghcautoconf.h
 echo "#endif /* __GHCAUTOCONF_H__ */" >> include/ghcautoconf.h
 ]
+
+dnl ######################################################################
+dnl Generate external symbol flags (-Wl,-u...)
+dnl ######################################################################
+
+cat $srcdir/external-symbols.list.in \
+    | "$CC" -E -P -traditional -Iinclude - -o - \
+    | sed '/^$/d' \
+    > external-symbols.list \
+    || exit 1
+
+mv external-symbols.list external-symbols.tmp
+if [[ -n "$LeadingUnderscore" ]]; then
+    sed 's/^/  -Wl,-u_/' external-symbols.tmp > external-symbols.list
+else
+    sed 's/^/  -Wl,-u/' external-symbols.tmp > external-symbols.list
+fi
+rm -f external-symbols.tmp
+
+dnl ######################################################################
+dnl Generate build-info
+dnl ######################################################################
+
+cat $srcdir/rts.buildinfo.in | \
+    sed -e 's/^  *//' | \
+    "$CC" -E -P -traditional - -o - \
+    > rts.buildinfo
+echo "" >> rts.buildinfo
+rm -f external-symbols.list
