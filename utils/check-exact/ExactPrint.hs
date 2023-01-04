@@ -1367,7 +1367,7 @@ instance ExactPrint (HsModule GhcPs) where
                    `debug` ("setAnnotationAnchor hsmod called" ++ showAst (anc,cs))
 
   exact hsmod@(HsModule {hsmodExt = XModulePs { hsmodAnn = EpAnnNotUsed }}) = withPpr hsmod >> return hsmod
-  exact (HsModule (XModulePs an lo mdeprec mbDoc) mmn mexports imports decls) = do
+  exact (HsModule (XModulePs an lo mdeprec mbDoc) headertoks mmn mexports imports decls) = do
 
     mbDoc' <- markAnnotated mbDoc
 
@@ -1398,7 +1398,7 @@ instance ExactPrint (HsModule GhcPs) where
     let anf = an0 { anns = (anns an0) { am_decls = am_decls' }}
     debugM $ "HsModule, anf=" ++ showAst anf
 
-    return (HsModule (XModulePs anf lo mdeprec' mbDoc') mmn' mexports' imports' decls')
+    return (HsModule (XModulePs anf lo mdeprec' mbDoc') headertoks mmn' mexports' imports' decls')
 
 -- ---------------------------------------------------------------------
 

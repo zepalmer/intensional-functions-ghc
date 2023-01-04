@@ -38,6 +38,15 @@
     (1))
    (Nothing)
    (Nothing))
+  (HsModTk
+   (L
+    (TokenLoc
+     (EpaSpan { Test20297.hs:2:1-6 }))
+    (HsTok))
+   (L
+    (TokenLoc
+     (EpaSpan { Test20297.hs:2:18-22 }))
+    (HsTok)))
   (Just
    (L
     (SrcSpanAnn (EpAnnNotUsed) { Test20297.hs:2:8-16 })
@@ -385,6 +394,15 @@
     (1))
    (Nothing)
    (Nothing))
+  (HsModTk
+   (L
+    (TokenLoc
+     (EpaSpan { Test20297.ppr.hs:2:1-6 }))
+    (HsTok))
+   (L
+    (TokenLoc
+     (EpaSpan { Test20297.ppr.hs:2:18-22 }))
+    (HsTok)))
   (Just
    (L
     (SrcSpanAnn (EpAnnNotUsed) { Test20297.ppr.hs:2:8-16 })
@@ -669,4 +687,3 @@
                         (EmptyLocalBinds
                          (NoExtField)))))]))))]}
               [])))))])))))]))
-
