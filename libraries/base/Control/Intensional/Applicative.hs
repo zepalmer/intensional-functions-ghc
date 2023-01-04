@@ -30,6 +30,17 @@ class (IntensionalFunctor f, Typeable f)
             )
          => '[f (a ->%c b), f a] ->%%c (f b)
 
+{-
+  TODO: consider the following signature for (%<*>)
+
+  '[ m (IntensionalFunction c inputs output)
+   , m arg
+   ] ->%%c m (IntensionalFunctionSingleApplicationResult cfn inputs output arg)
+
+  Note that the current signature assumes that it's applying the function to
+  saturation.
+-}
+
 infixl 4 %<*>
 
 itsLiftA2 :: forall c f x y z.

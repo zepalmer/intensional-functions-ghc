@@ -17,6 +17,8 @@ module Control.Intensional.Runtime.IntensionalFunction
 , ClosureItem(..)
 , IntensionalFunction(..)
 , itsForget
+, itsIdentify
+, itsInspect
   -- * Intensional function application
 , SaturationLevel(..)
 , IntensionalFunctionApplicationSaturation
@@ -68,6 +70,12 @@ data IntensionalFunction
 itsForget :: IntensionalFunction cfn inputs output
           -> ExtensionalFunctionF inputs output
 itsForget (IntensionalFunction _ _ fn) = fn
+
+itsIdentify :: IntensionalFunction cfn inputs output -> Label
+itsIdentify (IntensionalFunction lbl _ _) = lbl
+
+itsInspect :: IntensionalFunction cfn inputs output -> [ClosureItem cfn]
+itsInspect (IntensionalFunction _ closure _) = closure
 
 {- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Instances on intensional functions.
@@ -412,3 +420,10 @@ instance (IntensionalFunctionMultiApplication
         (%@+) fn (NonEmptyHListCons arg1 $
                     NonEmptyHListCons arg2 $
                         NonEmptyHListSingleton arg3)
+
+{-
+TODO: an operator that takes
+  '[x,y,...] ->%%c r
+and produces
+  x ->%c ('[y,...] ->%%c r)
+-}
