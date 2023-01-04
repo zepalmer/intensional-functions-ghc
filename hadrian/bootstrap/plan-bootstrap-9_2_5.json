@@ -83,10 +83,6 @@
     {
       "package": "process",
       "version": "1.6.16.0"
-    },
-    {
-      "package": "Cabal",
-      "version": "3.6.3.0"
     }
   ],
   "dependencies": [
@@ -241,6 +237,24 @@
       "source": "hackage",
       "src_sha256": "7d9db837bfd67acaaabdb3cea29acc15559ede82dd9f75d438589268031cd542",
       "version": "0.19.6"
+    },
+    {
+      "cabal_sha256": null,
+      "flags": [],
+      "package": "Cabal",
+      "revision": null,
+      "source": "local",
+      "src_sha256": null,
+      "version": "3.9.0.0"
+    },
+    {
+      "cabal_sha256": null,
+      "flags": [],
+      "package": "Cabal-syntax",
+      "revision": null,
+      "source": "local",
+      "src_sha256": null,
+      "version": "3.9.0.0"
     },
     {
       "cabal_sha256": null,

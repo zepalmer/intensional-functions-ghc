@@ -295,23 +295,6 @@ library
                         stg/Ticky.h
                         stg/Types.h
 
-      -- See Note [Undefined symbols in the RTS]
-      --
-      -- We should handle this symbol with the others in the configure script
-      -- once we are using Cabal containing
-      -- https://github.com/haskell/cabal/pull/8565 /
-      -- 30f8a46008d164b5c4c6ce0b4453eb93eb5ef46c.
-      if flag(leading-underscore)
-        if flag(find-ptr)
-          -- This symbol is useful in gdb, but not referred to anywhere,
-          -- so we need to force it to be included in the binary.
-          ld-options: "-Wl,-u,_findPtr"
-      else
-        if flag(find-ptr)
-          -- This symbol is useful in gdb, but not referred to anywhere,
-          -- so we need to force it to be included in the binary.
-          ld-options: "-Wl,-u,findPtr"
-
       if os(osx)
         ld-options: "-Wl,-search_paths_first"
                     -- See Note [fd_set_overflow]

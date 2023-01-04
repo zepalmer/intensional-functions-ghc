@@ -78,6 +78,8 @@ FetchInfo = NamedTuple('FetchInfo', [
 
 FetchPlan = Dict[Path, FetchInfo]
 
+local_packages: List[PackageName] = ["hadrian", "Cabal-syntax", "Cabal"]
+
 class Compiler:
     def __init__(self, ghc_path: Path):
         if not ghc_path.is_file():
@@ -173,7 +175,7 @@ def resolve_dep(dep : BootstrapDep) -> Path:
             shutil.copyfile(cabal_file, sdist_dir / f'{dep.package}.cabal')
 
     elif dep.source == PackageSource.LOCAL:
-        if dep.package == 'hadrian':
+        if dep.package in local_packages:
             sdist_dir = Path(sys.path[0]).parent.resolve()
         else:
             raise ValueError(f'Unknown local package {dep.package}')
@@ -341,7 +343,7 @@ def fetch_from_plan(plan : FetchPlan, output_dir : Path):
 def gen_fetch_plan(info : BootstrapInfo) -> FetchPlan :
     sources_dict = {}
     for dep in info.dependencies:
-      if dep.package != 'hadrian':
+      if not(dep.package in local_packages):
         sources_dict[f"{dep.package}-{dep.version}.tar.gz"] = FetchInfo(package_url(dep.package, dep.version), dep.src_sha256)
         if dep.revision is not None:
           sources_dict[f"{dep.package}.cabal"] = FetchInfo(package_cabal_url(dep.package, dep.version, dep.revision), dep.cabal_sha256)

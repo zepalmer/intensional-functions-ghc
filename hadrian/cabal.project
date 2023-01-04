@@ -1,4 +1,6 @@
 packages: ./
+-- N.B. This could be removed once Cabal 3.9 is released.
+packages: ../libraries/Cabal/Cabal, ../libraries/Cabal/Cabal-syntax
 
 -- This essentially freezes the build plan for hadrian
 index-state: 2022-11-19T22:13:06Z

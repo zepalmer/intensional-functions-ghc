@@ -62,8 +62,14 @@ dnl ######################################################################
 
 dnl See Note [Undefined symbols in the RTS]
 
+[
+symbolExtraDefs=''
+if [[ $CABAL_FLAG_find_ptr = 1 ]]; then
+    symbolExtraDefs+=' -DFIND_PTR'
+fi
+
 cat $srcdir/external-symbols.list.in \
-    | "$CC" -E -P -traditional -Iinclude - -o - \
+    | "$CC" $symbolExtraDefs -E -P -traditional -Iinclude - -o - \
     | sed '/^$/d' \
     > external-symbols.list \
     || exit 1
@@ -75,14 +81,17 @@ else
     sed 's/^/  -Wl,-u,/' external-symbols.tmp > external-symbols.list
 fi
 rm -f external-symbols.tmp
+]
 
 dnl ######################################################################
 dnl Generate build-info
 dnl ######################################################################
 
+[
 cat $srcdir/rts.buildinfo.in | \
     sed -e 's/^  *//' | \
     "$CC" -E -P -traditional - -o - \
     > rts.buildinfo
 echo "" >> rts.buildinfo
 rm -f external-symbols.list
+]

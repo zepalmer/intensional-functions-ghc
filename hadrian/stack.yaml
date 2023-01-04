@@ -2,6 +2,8 @@ resolver: lts-19.8
 
 packages:
 - '.'
+- '../libraries/Cabal/Cabal'
+- '../libraries/Cabal/Cabal-syntax'
 
 nix:
    enable: false

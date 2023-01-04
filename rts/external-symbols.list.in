@@ -19,6 +19,10 @@ hs_atomicwrite64
 base_GHCziEventziWindows_processRemoteCompletion_closure
 #endif
 
+#if FIND_PTR
+findPtr
+#endif
+
 base_GHCziTopHandler_runIO_closure
 base_GHCziTopHandler_runNonIO_closure
 ghczmprim_GHCziTupleziPrim_Z0T_closure
