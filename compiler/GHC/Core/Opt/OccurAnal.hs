@@ -849,15 +849,16 @@ occAnalBind !env lvl ire (NonRec bndr rhs) thing_inside combine
   = let -- Analyse the rhs first, generating rhs_uds
         rhs_env = setRhsCtxt OccVanilla env
         WithUsageDetails rhs_uds rhs' = occAnalRhs rhs_env NonRecursive mb_join rhs
+        !(!one_uds, !many_uds) = partitionOneOccUDs rhs_uds
 
         -- Now analyse the body, adding the
         -- join-point into the environment with addJoinPoint
         (tagged_bndr, body_wuds)
            = occAnalNonRecBody env lvl bndr $ \env ->
-             thing_inside (addJoinPoint env bndr rhs_uds)
+             thing_inside (addJoinPoint env bndr one_uds)
 
         -- Build the WithUsageDetails for the join-point binding
-        bind_wuds = WithUsageDetails emptyDetails [NonRec tagged_bndr rhs']
+        bind_wuds = WithUsageDetails many_uds [NonRec tagged_bndr rhs']
     in
     finishNonRec combine tagged_bndr bind_wuds body_wuds
 
@@ -3308,6 +3309,15 @@ lookupDetails ud id
 
 usedIn :: Id -> UsageDetails -> Bool
 v `usedIn` ud = isExportedId v || v `elemVarEnv` ud_env ud
+
+partitionOneOccUDs :: UsageDetails -> (UsageDetails, UsageDetails)
+partitionOneOccUDs uds
+  = (emptyDetails{ud_env = interesting_env}, emptyDetails{ud_env = boring_env})
+  where
+    UD{ud_env=env} = flattenUsageDetails uds
+    (interesting_env,boring_env) = partitionVarEnv interesting env
+    interesting OneOcc{} = True
+    interesting _        = False
 
 udFreeVars :: VarSet -> UsageDetails -> VarSet
 -- Find the subset of bndrs that are mentioned in uds
