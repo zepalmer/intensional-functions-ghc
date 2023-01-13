@@ -58,8 +58,8 @@ import GHC.Utils.Misc
 import GHC.Builtin.Names( runRWKey )
 import GHC.Unit.Module( Module )
 
-import Data.List (mapAccumL, mapAccumR)
-import Data.List.NonEmpty (NonEmpty (..), nonEmpty)
+import Data.List (mapAccumL)
+import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 
 {-
@@ -596,6 +596,10 @@ Hence the transitive rule_fv_env stuff described in
 Note [Rules and loop breakers].
 
 ------------------------------------------------------------
+Note [Occurrence analysis for join points]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ToDo: addresses #22404.
+
 Note [Finding join points]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 It's the occurrence analyser's job to find bindings that we can turn into join
@@ -848,7 +852,9 @@ occAnalBind !env lvl ire (NonRec bndr rhs) thing_inside combine
   , not (idHasRules bndr)
   = let -- Analyse the rhs first, generating rhs_uds
         rhs_env = setRhsCtxt OccVanilla env
-        WithUsageDetails rhs_uds rhs' = occAnalRhs rhs_env NonRecursive mb_join rhs
+        WithUsageDetails rhs_uds rhs' = adjustNonRecRhs mb_join $
+                                        occAnalLamTail rhs_env rhs
+
         !(!one_uds, !many_uds) = partitionOneOccUDs rhs_uds
 
         -- Now analyse the body, adding the
@@ -900,7 +906,7 @@ finishNonRec combine tagged_bndr
 occAnalNonRecIdBind :: OccEnv -> ImpRuleEdges -> Id -> CoreExpr
                     -> WithUsageDetails [CoreBind]
 occAnalNonRecIdBind !env imp_rule_edges tagged_bndr rhs
-  = WithUsageDetails rhs_usage [NonRec final_bndr rhs']
+  = WithUsageDetails rhs_usage [NonRec final_bndr final_rhs]
   where
     -- Get the join info from the *new* decision
     -- See Note [Join points and unfoldings/rules]
@@ -928,7 +934,7 @@ occAnalNonRecIdBind !env imp_rule_edges tagged_bndr rhs
 
     --------- Unfolding ---------
     -- See Note [Join points and unfoldings/rules]
-    unf = idUnfolding bndr
+    unf = idUnfolding tagged_bndr
     WithTailUsageDetails unf_uds unf1 = occAnalUnfolding rhs_env unf
     unf2 = markNonRecUnfoldingOneShots mb_join_arity unf1
     adj_unf_uds = adjustTailArity mb_join_arity unf_uds
@@ -1019,12 +1025,9 @@ occAnalRec !_ _ scc (WithUsageDetails body_uds binds)
 occAnalRec !_ lvl
            (AcyclicSCC (ND { nd_bndr = bndr, nd_rhs = wtuds }))
            (WithUsageDetails body_uds binds)
-  = WithUsageDetails (body_uds' `andUDs` rhs_uds') (NonRec bndr' rhs' : binds)
+  = WithUsageDetails (body_uds `andUDs` rhs_uds')
+                     (NonRec bndr' rhs' : binds)
   where
-    tagged_bndr   = tagNonRecBinder lvl body_uds bndr
-    rhs_uds'      = adjustRhsUsage mb_join_arity rhs rhs_uds
-    mb_join_arity = willBeJoinId_maybe tagged_bndr
-
     tagged_bndr   = tagNonRecBinder lvl body_uds bndr
     mb_join_arity = willBeJoinId_maybe tagged_bndr
     WithUsageDetails rhs_uds' rhs' = adjustNonRecRhs mb_join_arity wtuds
@@ -1619,7 +1622,7 @@ makeNode !env imp_rule_edges bndr_set (bndr, rhs)
     -- Instead, do the occAnalLamTail call here and postpone adjustTailUsage
     -- until occAnalRec. In effect, we pretend that the RHS becomes a
     -- non-recursive join point and fix up later with adjustTailUsage.
-    rhs_env = setRhsCtxt env
+    rhs_env = setRhsCtxt OccRhs env
     WithTailUsageDetails (TUD rhs_ja unadj_rhs_uds) rhs' = occAnalLamTail rhs_env rhs
       -- corresponding call to adjustTailUsage in occAnalRec and tagRecBinders
 
@@ -2029,8 +2032,8 @@ occAnalLamTail :: OccEnv -> CoreExpr -> WithTailUsageDetails CoreExpr
 -- See Note [Adjusting right-hand sides]
 occAnalLamTail env (Lam bndr expr)
   | isTyVar bndr
-  = addInScope env [bndr] $ \env ->
-    let WithTailUsageDetails (TUD ja usage) expr' <- occAnalLamTail env expr
+  = addInScopeTail env [bndr] $ \env ->
+    let WithTailUsageDetails (TUD ja usage) expr' = occAnalLamTail env expr
     in WithTailUsageDetails (TUD (ja+1) usage) (Lam bndr expr')
        -- Important: Do not modify occ_encl, so that with a RHS like
        --   \(@ x) -> K @x (f @x)
@@ -2038,7 +2041,7 @@ occAnalLamTail env (Lam bndr expr)
        -- from inlining f. See the beginning of Note [Cascading inlines].
 
   | otherwise  -- So 'bndr' is an Id
-  = addInScope env [bndr] $ \env ->
+  = addInScopeTail env [bndr] $ \env ->
     let (env_one_shots', bndr1)
            = case occ_one_shots env of
                []         -> ([],  bndr)
@@ -2051,7 +2054,7 @@ occAnalLamTail env (Lam bndr expr)
         env1 = env { occ_encl = OccVanilla, occ_one_shots = env_one_shots' }
         WithTailUsageDetails (TUD ja usage) expr' = occAnalLamTail env1 expr
         bndr2 = tagLamBinder usage bndr1
-    in WithTailUsageDetails (TUD (ja+1) usage') (Lam bndr2 expr')
+    in WithTailUsageDetails (TUD (ja+1) usage) (Lam bndr2 expr')
 
 -- For casts, keep going in the same lambda-group
 -- See Note [Occurrence analysis for lambda binders]
@@ -2737,10 +2740,28 @@ isRhsEnv (OccEnv { occ_encl = cxt }) = case cxt of
                                           OccRhs -> True
                                           _      -> False
 
-addInScope :: OccEnv -> [Var] -> (OccEnv -> WithUsageDetails a) -> WithUsageDetails a
+addInScope :: OccEnv -> [Var] -> (OccEnv -> WithUsageDetails a)
+           -> WithUsageDetails a
+addInScope = add_in_scope fix_up
+  where
+    fix_up fix_up_usage (WithUsageDetails usage res)
+      = WithUsageDetails (fix_up_usage usage) res
+
+addInScopeTail :: OccEnv -> [Var] -> (OccEnv -> WithTailUsageDetails a)
+               -> WithTailUsageDetails a
+addInScopeTail = add_in_scope fix_up
+  where
+    fix_up fix_up_usage (WithTailUsageDetails (TUD ja usage) res)
+      = WithTailUsageDetails (TUD ja (fix_up_usage usage)) res
+
+add_in_scope :: ((UsageDetails -> UsageDetails) -> res -> res)
+             -> OccEnv -> [Var] -> (OccEnv -> res) -> res
 -- Needed for all Vars not just Ids; a TyVar might have a CoVars in its kind
-addInScope env@(OccEnv { occ_join_points = join_points }) bndrs thing_inside
-  = fix_up_uds $ thing_inside $ drop_shadowed_swaps $ drop_shadowed_joins env
+add_in_scope fix_up_result
+             env@(OccEnv { occ_join_points = join_points })
+             bndrs thing_inside
+  = fix_up_result fix_up_uds $ thing_inside $
+    drop_shadowed_swaps $ drop_shadowed_joins env
   where
 
     drop_shadowed_swaps :: OccEnv -> OccEnv
@@ -2755,11 +2776,11 @@ addInScope env@(OccEnv { occ_join_points = join_points }) bndrs thing_inside
     -- See Note [Occurrence analysis for join points]
     drop_shadowed_joins env = env { occ_join_points = good_joins `delVarEnvList` bndrs}
 
-    fix_up_uds :: WithUsageDetails a -> WithUsageDetails a
+    fix_up_uds :: UsageDetails -> UsageDetails
+    -- Remove usage for bndrs
     -- Add usage info for (a) CoVars used in the types of bndrs
     -- and (b) occ_join_points that we cannot push inwards because of shadowing
-    fix_up_uds (WithUsageDetails uds res)
-      = WithUsageDetails with_joins res
+    fix_up_uds uds = with_joins
       where
         trimmed_uds      = uds `delDetails` bndrs
         with_co_var_occs = trimmed_uds `addManyOccs` coVarOccs bndrs
@@ -3387,8 +3408,8 @@ adjustTailUsage mb_join_arity rhs (TUD rhs_ja usage)
     exact_join = mb_join_arity == Just rhs_ja
 
 adjustTailArity :: Maybe JoinArity -> TailUsageDetails -> UsageDetails
-adjustTailArity mb_rhs_ja (TUD ud_ja usage) =
-  markAllNonTailIf (mb_rhs_ja /= Just ud_ja) usage
+adjustTailArity mb_rhs_ja (TUD ud_ja usage)
+  = markAllNonTailIf (mb_rhs_ja /= Just ud_ja) usage
 
 markNonRecJoinOneShots :: JoinArity -> CoreExpr -> CoreExpr
 -- For a /non-recursive/ join point we can mark all
