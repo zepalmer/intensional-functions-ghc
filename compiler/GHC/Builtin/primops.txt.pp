@@ -1780,7 +1780,15 @@ primop  ResizeMutableByteArrayOp_Char "resizeMutableByteArray#" GenPrimOp
 
 primop  UnsafeFreezeByteArrayOp "unsafeFreezeByteArray#" GenPrimOp
    MutableByteArray# s -> State# s -> (# State# s, ByteArray# #)
-   {Make a mutable byte array immutable, without copying.}
+   {Make a mutable byte array immutable, without copying.
+
+    @since 0.11.0}
+   with
+   has_side_effects = True
+
+primop  UnsafeThawByteArrayOp "unsafeThawByteArray#" GenPrimOp
+   MutableByteArray# s -> State# s -> (# State# s, ByteArray# #)
+   {Make an immutable byte array mutable, without copying.}
    with
    has_side_effects = True
 
