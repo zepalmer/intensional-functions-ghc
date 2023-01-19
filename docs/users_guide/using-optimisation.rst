@@ -1468,9 +1468,9 @@ by saying ``-fno-wombat``.
     default you can disable it for certain constructor fields using the
     ``NOUNPACK`` pragma (see :ref:`nounpack-pragma`).
 
-    Note that for consistency ``Double``, ``Word64``, and ``Int64``
-    constructor fields are unpacked on 32-bit platforms, even though
-    they are technically larger than a pointer on those platforms.
+    Note that for consistency constructor fields are unpacked on 32-bit platforms
+    as if it we were compiling for a 64-bit target even if fields are larger
+    than a pointer on those platforms.
 
 .. ghc-flag:: -funbox-strict-fields
     :shortdesc: Flatten strict constructor fields

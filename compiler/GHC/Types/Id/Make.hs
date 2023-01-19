@@ -67,6 +67,7 @@ import GHC.Types.Literal
 import GHC.Types.SourceText
 import GHC.Types.Name.Set
 import GHC.Types.Name
+import GHC.Types.RepType
 import GHC.Types.ForeignCall
 import GHC.Types.Id
 import GHC.Types.Id.Info
@@ -1362,9 +1363,20 @@ shouldUnpackTy bang_opts prag fam_envs ty
           | otherwise
           -> bang_opt_unbox_strict bang_opts
              || (bang_opt_unbox_small bang_opts
-                 && rep_tys `lengthAtMost` 1)  -- See Note [Unpack one-wide fields]
-      where (rep_tys, _) = dataConArgUnpack ty
+                 && is_small_rep rep_tys)  -- See Note [Unpack one-wide fields]
+      where
+        (rep_tys, _) = dataConArgUnpack ty
 
+    -- Takes in the list of reps used to represent the dataCon after it's unpacked
+    -- and tells us if they can fit into 8 bytes. See Note [Unpack one-wide fields]
+    is_small_rep rep_tys =
+      let -- Neccesary to look through unboxed tuples.
+          prim_reps = concatMap (typePrimRep . scaledThing . fst) $ rep_tys
+          -- Void types are erased when unpacked so we
+          nv_prim_reps = filter (not . isVoidRep) prim_reps
+          -- And then get the actual size of the unpacked constructor.
+          rep_size = sum $ map primRepSizeW64_B nv_prim_reps
+      in rep_size <= 8
 
 -- Given a type already assumed to have been normalized by topNormaliseType,
 -- unpackable_type_datacons ty = Just datacons
@@ -1423,6 +1435,14 @@ However
     data S = S !a
 
 Here we can represent T with an Int#.
+
+Special care has to be taken to make sure we don't mistake fields with unboxed
+tuple/sum rep or very large reps. See #22309
+
+For consistency we unpack anything that fits into 8 bytes on a 64-bit platform,
+even when compiling for 32bit platforms. This way unpacking decisions will be the
+same for 32bit and 64bit systems. To do so we use primRepSizeW64_B instead of
+primRepSizeB. See also the tests in test case T22309.
 
 Note [Recursive unboxing]
 ~~~~~~~~~~~~~~~~~~~~~~~~~
