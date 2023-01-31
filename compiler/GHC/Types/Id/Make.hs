@@ -56,7 +56,7 @@ import GHC.Core.Coercion
 import GHC.Core.Reduction
 import GHC.Core.Make
 import GHC.Core.FVs     ( mkRuleInfo )
-import GHC.Core.Utils   ( exprType, mkCast, mkDefaultCase, coreAltsType )
+import GHC.Core.Utils   ( exprType, mkCast, coreAltsType )
 import GHC.Core.Unfold.Make
 import GHC.Core.SimpleOpt
 import GHC.Core.TyCon
@@ -586,8 +586,12 @@ mkDataConWorkId wkr_name data_con
   = mkGlobalId (DataConWorkId data_con) wkr_name wkr_ty alg_wkr_info
 
   where
-    tycon  = dataConTyCon data_con  -- The representation TyCon
-    wkr_ty = dataConRepType data_con
+    tycon     = dataConTyCon data_con  -- The representation TyCon
+    wkr_ty    = dataConRepType data_con
+    univ_tvs  = dataConUnivTyVars data_con
+    ex_tcvs   = dataConExTyCoVars data_con
+    arg_tys   = dataConRepArgTys  data_con  -- Should be same as dataConOrigArgTys
+    str_marks = dataConRepStrictness data_con
 
     ----------- Workers for data types --------------
     alg_wkr_info = noCafIdInfo
@@ -595,15 +599,19 @@ mkDataConWorkId wkr_name data_con
                    `setInlinePragInfo`     wkr_inline_prag
                    `setUnfoldingInfo`      evaldUnfolding  -- Record that it's evaluated,
                                                            -- even if arity = 0
-          -- No strictness: see Note [Data-con worker strictness] in GHC.Core.DataCon
+                   `setDmdSigInfo`         wkr_sig
+                      -- Workers eval their strict fields
+                      -- See Note [Strict fields in Core]
 
     wkr_inline_prag = defaultInlinePragma { inl_rule = ConLike }
     wkr_arity = dataConRepArity data_con
 
+    wkr_sig = mkClosedDmdSig wkr_dmds topDiv
+    wkr_dmds = map mk_dmd str_marks
+    mk_dmd MarkedStrict    = evalDmd
+    mk_dmd NotMarkedStrict = topDmd
+
     ----------- Workers for newtypes --------------
-    univ_tvs = dataConUnivTyVars data_con
-    ex_tcvs  = dataConExTyCoVars data_con
-    arg_tys  = dataConRepArgTys  data_con  -- Should be same as dataConOrigArgTys
     nt_work_info = noCafIdInfo          -- The NoCaf-ness is set by noCafIdInfo
                   `setArityInfo` 1      -- Arity 1
                   `setInlinePragInfo`     dataConWrapperInlinePragma
@@ -686,10 +694,10 @@ mkDataConRep :: DataConBangOpts
              -> FamInstEnvs
              -> Name
              -> DataCon
-             -> UniqSM DataConRep
+             -> UniqSM (DataConRep, [HsImplBang], [StrictnessMark])
 mkDataConRep dc_bang_opts fam_envs wrap_name data_con
   | not wrapper_reqd
-  = return NoDataConRep
+  = return (NoDataConRep, arg_ibangs, rep_strs)
 
   | otherwise
   = do { wrap_args <- mapM (newLocal (fsLit "conrep")) wrap_arg_tys
@@ -744,11 +752,8 @@ mkDataConRep dc_bang_opts fam_envs wrap_name data_con
 
        ; return (DCR { dcr_wrap_id = wrap_id
                      , dcr_boxer   = mk_boxer boxers
-                     , dcr_arg_tys = rep_tys
-                     , dcr_stricts = rep_strs
-                       -- For newtypes, dcr_bangs is always [HsLazy].
-                       -- See Note [HsImplBangs for newtypes].
-                     , dcr_bangs   = arg_ibangs }) }
+                     , dcr_arg_tys = rep_tys }
+                , arg_ibangs, rep_strs) }
 
   where
     (univ_tvs, ex_tvs, eq_spec, theta, orig_arg_tys, _orig_res_ty)
@@ -798,8 +803,8 @@ mkDataConRep dc_bang_opts fam_envs wrap_name data_con
                      -- (Most) newtypes have only a worker, with the exception
                      -- of some newtypes written with GADT syntax.
                      -- See dataConUserTyVarsNeedWrapper below.
-         && (any isBanged (ev_ibangs ++ arg_ibangs)))
-                     -- Some forcing/unboxing (includes eq_spec)
+         && (any isUnpacked (ev_ibangs ++ arg_ibangs)))
+                     -- Some unboxing (includes eq_spec)
       || isFamInstTyCon tycon -- Cast result
       || (dataConUserTyVarsNeedWrapper data_con
                      -- If the data type was written with GADT syntax and
@@ -1077,7 +1082,7 @@ dataConArgRep arg_ty HsLazy
   = ([(arg_ty, NotMarkedStrict)], (unitUnboxer, unitBoxer))
 
 dataConArgRep arg_ty (HsStrict _)
-  = ([(arg_ty, MarkedStrict)], (seqUnboxer, unitBoxer))
+  = ([(arg_ty, MarkedStrict)], (unitUnboxer, unitBoxer)) -- Seqs are inserted in STG
 
 dataConArgRep arg_ty (HsUnpack Nothing)
   = dataConArgUnpack arg_ty
@@ -1107,9 +1112,6 @@ wrapCo co rep_ty (unbox_rep, box_rep)  -- co :: arg_ty ~ rep_ty
                ; return (rep_ids, rep_expr `Cast` mkSymCo sco) }
 
 ------------------------
-seqUnboxer :: Unboxer
-seqUnboxer v = return ([v], mkDefaultCase (Var v) v)
-
 unitUnboxer :: Unboxer
 unitUnboxer v = return ([v], \e -> e)
 

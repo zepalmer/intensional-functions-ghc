@@ -1253,18 +1253,23 @@ in this (which it previously was):
             in \w. v True
 -}
 
---------------------
-exprIsWorkFree :: CoreExpr -> Bool   -- See Note [exprIsWorkFree]
-exprIsWorkFree e = exprIsCheapX isWorkFreeApp e
+-------------------------------------
+type CheapAppFun = Id -> Arity -> Bool
+  -- Is an application of this function to n *value* args
+  -- always cheap, assuming the arguments are cheap?
+  -- True mainly of data constructors, partial applications;
+  -- but with minor variations:
+  --    isWorkFreeApp
+  --    isCheapApp
+  --    isExpandableApp
 
-exprIsCheap :: CoreExpr -> Bool
-exprIsCheap e = exprIsCheapX isCheapApp e
-
-exprIsCheapX :: CheapAppFun -> CoreExpr -> Bool
+exprIsCheapX :: CheapAppFun -> Bool -> CoreExpr -> Bool
 {-# INLINE exprIsCheapX #-}
--- allow specialization of exprIsCheap and exprIsWorkFree
+-- allow specialization of exprIsCheap, exprIsWorkFree and exprIsExpandable
 -- instead of having an unknown call to ok_app
-exprIsCheapX ok_app e
+-- expandable: Only True for exprIsExpandable, where Case and Let are never
+--             expandable.
+exprIsCheapX ok_app expandable e
   = ok e
   where
     ok e = go 0 e
@@ -1275,23 +1280,101 @@ exprIsCheapX ok_app e
     go _ (Type {})                    = True
     go _ (Coercion {})                = True
     go n (Cast e _)                   = go n e
-    go n (Case scrut _ _ alts)        = ok scrut &&
-                                        and [ go n rhs | Alt _ _ rhs <- alts ]
     go n (Tick t e) | tickishCounts t = False
                     | otherwise       = go n e
     go n (Lam x e)  | isRuntimeVar x  = n==0 || go (n-1) e
                     | otherwise       = go n e
     go n (App f e)  | isRuntimeArg e  = go (n+1) f && ok e
                     | otherwise       = go n f
-    go n (Let (NonRec _ r) e)         = go n e && ok r
-    go n (Let (Rec prs) e)            = go n e && all (ok . snd) prs
+    go n (Case scrut _ _ alts)        = not expandable && ok scrut &&
+                                        and [ go n rhs | Alt _ _ rhs <- alts ]
+    go n (Let (NonRec _ r) e)         = not expandable && go n e && ok r
+    go n (Let (Rec prs) e)            = not expandable && go n e && all (ok . snd) prs
 
       -- Case: see Note [Case expressions are work-free]
       -- App, Let: see Note [Arguments and let-bindings exprIsCheapX]
 
+--------------------
+exprIsWorkFree :: CoreExpr -> Bool
+-- See Note [exprIsWorkFree]
+exprIsWorkFree e = exprIsCheapX isWorkFreeApp False e
 
-{- Note [exprIsExpandable]
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+--------------------
+exprIsCheap :: CoreExpr -> Bool
+-- See Note [exprIsCheap]
+exprIsCheap e = exprIsCheapX isCheapApp False e
+
+--------------------
+exprIsExpandable :: CoreExpr -> Bool
+-- See Note [exprIsExpandable]
+exprIsExpandable e = exprIsCheapX isExpandableApp True e
+
+isWorkFreeApp :: CheapAppFun
+isWorkFreeApp fn n_val_args
+  | n_val_args == 0           -- No value args
+  = True
+  | n_val_args < idArity fn   -- Partial application
+  = True
+  | otherwise
+  = case idDetails fn of
+      DataConWorkId {} -> True
+      _                -> False
+
+isCheapApp :: CheapAppFun
+isCheapApp fn n_val_args
+  | isWorkFreeApp fn n_val_args = True
+  | isDeadEndId fn              = True  -- See Note [isCheapApp: bottoming functions]
+  | otherwise
+  = case idDetails fn of
+      -- DataConWorkId {} -> _  -- Handled by isWorkFreeApp
+      RecSelId {}      -> n_val_args == 1  -- See Note [Record selection]
+      ClassOpId {}     -> n_val_args == 1
+      PrimOpId op _    -> primOpIsCheap op
+      _                -> False
+        -- In principle we should worry about primops
+        -- that return a type variable, since the result
+        -- might be applied to something, but I'm not going
+        -- to bother to check the number of args
+
+isExpandableApp :: CheapAppFun
+isExpandableApp fn n_val_args
+  | isWorkFreeApp fn n_val_args = True
+  | otherwise
+  = case idDetails fn of
+      -- DataConWorkId {} -> _  -- Handled by isWorkFreeApp
+      RecSelId {}  -> n_val_args == 1  -- See Note [Record selection]
+      ClassOpId {} -> n_val_args == 1
+      PrimOpId {}  -> False
+      _ | isDeadEndId fn     -> False
+          -- See Note [isExpandableApp: bottoming functions]
+        | isConLikeId fn     -> True
+        | all_args_are_preds -> True
+        | otherwise          -> False
+
+  where
+     -- See if all the arguments are PredTys (implicit params or classes)
+     -- If so we'll regard it as expandable; see Note [Expandable overloadings]
+     all_args_are_preds = all_pred_args n_val_args (idType fn)
+
+     all_pred_args n_val_args ty
+       | n_val_args == 0
+       = True
+
+       | Just (bndr, ty) <- splitPiTy_maybe ty
+       = case bndr of
+           Named {}  -> all_pred_args n_val_args ty
+           Anon _ af -> isInvisibleFunArg af && all_pred_args (n_val_args-1) ty
+
+       | otherwise
+       = False
+
+{- Note [isCheapApp: bottoming functions]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+I'm not sure why we have a special case for bottoming
+functions in isCheapApp.  Maybe we don't need it.
+
+Note [exprIsExpandable]
+~~~~~~~~~~~~~~~~~~~~~~~
 An expression is "expandable" if we are willing to duplicate it, if doing
 so might make a RULE or case-of-constructor fire.  Consider
    let x = (a,b)
@@ -1333,103 +1416,6 @@ expansion.  Specifically:
   say that (q @ Float) expands to (Ptr a (a +# b)), and that will
   duplicate the (a +# b) primop, which we should not do lightly.
   (It's quite hard to trigger this bug, but T13155 does so for GHC 8.0.)
--}
-
--------------------------------------
-exprIsExpandable :: CoreExpr -> Bool
--- See Note [exprIsExpandable]
-exprIsExpandable e
-  = ok e
-  where
-    ok e = go 0 e
-
-    -- n is the number of value arguments
-    go n (Var v)                      = isExpandableApp v n
-    go _ (Lit {})                     = True
-    go _ (Type {})                    = True
-    go _ (Coercion {})                = True
-    go n (Cast e _)                   = go n e
-    go n (Tick t e) | tickishCounts t = False
-                    | otherwise       = go n e
-    go n (Lam x e)  | isRuntimeVar x  = n==0 || go (n-1) e
-                    | otherwise       = go n e
-    go n (App f e)  | isRuntimeArg e  = go (n+1) f && ok e
-                    | otherwise       = go n f
-    go _ (Case {})                    = False
-    go _ (Let {})                     = False
-
-
--------------------------------------
-type CheapAppFun = Id -> Arity -> Bool
-  -- Is an application of this function to n *value* args
-  -- always cheap, assuming the arguments are cheap?
-  -- True mainly of data constructors, partial applications;
-  -- but with minor variations:
-  --    isWorkFreeApp
-  --    isCheapApp
-
-isWorkFreeApp :: CheapAppFun
-isWorkFreeApp fn n_val_args
-  | n_val_args == 0           -- No value args
-  = True
-  | n_val_args < idArity fn   -- Partial application
-  = True
-  | otherwise
-  = case idDetails fn of
-      DataConWorkId {} -> True
-      _                -> False
-
-isCheapApp :: CheapAppFun
-isCheapApp fn n_val_args
-  | isWorkFreeApp fn n_val_args = True
-  | isDeadEndId fn              = True  -- See Note [isCheapApp: bottoming functions]
-  | otherwise
-  = case idDetails fn of
-      DataConWorkId {} -> True  -- Actually handled by isWorkFreeApp
-      RecSelId {}      -> n_val_args == 1  -- See Note [Record selection]
-      ClassOpId {}     -> n_val_args == 1
-      PrimOpId op _    -> primOpIsCheap op
-      _                -> False
-        -- In principle we should worry about primops
-        -- that return a type variable, since the result
-        -- might be applied to something, but I'm not going
-        -- to bother to check the number of args
-
-isExpandableApp :: CheapAppFun
-isExpandableApp fn n_val_args
-  | isWorkFreeApp fn n_val_args = True
-  | otherwise
-  = case idDetails fn of
-      RecSelId {}  -> n_val_args == 1  -- See Note [Record selection]
-      ClassOpId {} -> n_val_args == 1
-      PrimOpId {}  -> False
-      _ | isDeadEndId fn     -> False
-          -- See Note [isExpandableApp: bottoming functions]
-        | isConLikeId fn     -> True
-        | all_args_are_preds -> True
-        | otherwise          -> False
-
-  where
-     -- See if all the arguments are PredTys (implicit params or classes)
-     -- If so we'll regard it as expandable; see Note [Expandable overloadings]
-     all_args_are_preds = all_pred_args n_val_args (idType fn)
-
-     all_pred_args n_val_args ty
-       | n_val_args == 0
-       = True
-
-       | Just (bndr, ty) <- splitPiTy_maybe ty
-       = case bndr of
-           Named {}  -> all_pred_args n_val_args ty
-           Anon _ af -> isInvisibleFunArg af && all_pred_args (n_val_args-1) ty
-
-       | otherwise
-       = False
-
-{- Note [isCheapApp: bottoming functions]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-I'm not sure why we have a special case for bottoming
-functions in isCheapApp.  Maybe we don't need it.
 
 Note [isExpandableApp: bottoming functions]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1574,10 +1560,10 @@ expr_ok fun_ok primop_ok (Case scrut bndr _ alts)
   && altsAreExhaustive alts
 
 expr_ok fun_ok primop_ok other_expr
-  | (expr, args) <- collectArgs other_expr
+  | (expr, val_args) <- collectValArgs other_expr
   = case stripTicksTopE (not . tickishCounts) expr of
         Var f ->
-           app_ok fun_ok primop_ok f args
+           app_ok fun_ok primop_ok f val_args
 
         -- 'LitRubbish' is the only literal that can occur in the head of an
         -- application and will not be matched by the above case (Var /= Lit).
@@ -1591,8 +1577,8 @@ expr_ok fun_ok primop_ok other_expr
         _ -> False
 
 -----------------------------
-app_ok :: (Id -> Bool) -> (PrimOp -> Bool) -> Id -> [CoreExpr] -> Bool
-app_ok fun_ok primop_ok fun args
+app_ok :: (Id -> Bool) -> (PrimOp -> Bool) -> Id -> [CoreArg] -> Bool
+app_ok fun_ok primop_ok fun val_args
   | not (fun_ok fun)
   = False -- This code path is only taken for Note [Speculative evaluation]
   | otherwise
@@ -1601,21 +1587,22 @@ app_ok fun_ok primop_ok fun args
          -- DFuns terminate, unless the dict is implemented
          -- with a newtype in which case they may not
 
-      DataConWorkId {} -> True
-                -- The strictness of the constructor has already
-                -- been expressed by its "wrapper", so we don't need
-                -- to take the arguments into account
+      DataConWorkId dc
+        | Just str_marks <- dataConRepStrictness_maybe dc
+        -> all3Prefix field_ok str_marks val_arg_tys val_args
+        | otherwise
+        -> all2Prefix arg_ok val_arg_tys val_args
 
       ClassOpId _ is_terminating_result
         | is_terminating_result -- See Note [exprOkForSpeculation and type classes]
-        -> assertPpr (n_val_args == 1) (ppr fun $$ ppr args) $
+        -> assertPpr (n_val_args == 1) (ppr fun $$ ppr val_args) $
            True
            -- assert: terminating result type => can't be applied;
            -- c.f the _other case below
 
       PrimOpId op _
         | primOpIsDiv op
-        , [arg1, Lit lit] <- args
+        , [arg1, Lit lit] <- val_args
         -> not (isZeroLit lit) && expr_ok fun_ok primop_ok arg1
               -- Special case for dividing operations that fail
               -- In general they are NOT ok-for-speculation
@@ -1633,13 +1620,13 @@ app_ok fun_ok primop_ok fun args
 
         | otherwise
         -> primop_ok op  -- Check the primop itself
-        && and (zipWith arg_ok arg_tys args)  -- Check the arguments
+        && all2Prefix arg_ok val_arg_tys val_args  -- Check the arguments
 
       _other  -- Unlifted and terminating types;
               -- Also c.f. the Var case of exprIsHNF
          |  isTerminatingType fun_ty  -- See Note [exprOkForSpeculation and type classes]
          || definitelyUnliftedType fun_ty
-         -> assertPpr (n_val_args == 0) (ppr fun $$ ppr args)
+         -> assertPpr (n_val_args == 0) (ppr fun $$ ppr val_args)
             True  -- Both terminating types (e.g. Eq a), and unlifted types (e.g. Int#)
                   -- are non-functions and so will have no value args.  The assert is
                   -- just to check this.
@@ -1648,7 +1635,7 @@ app_ok fun_ok primop_ok fun args
 
          -- Partial applications
          | idArity fun > n_val_args ->
-           and (zipWith arg_ok arg_tys args)  -- Check the arguments
+           all2Prefix arg_ok val_arg_tys val_args  -- Check the arguments
 
          -- Functions that terminate fast without raising exceptions etc
          -- See Note [Discarding unnecessary unsafeEqualityProofs]
@@ -1660,15 +1647,24 @@ app_ok fun_ok primop_ok fun args
              --     see Note [exprOkForSpeculation and evaluated variables]
   where
     fun_ty       = idType fun
-    n_val_args   = valArgCount args
+    n_val_args   = length val_args
     (arg_tys, _) = splitPiTys fun_ty
+    val_arg_tys  = mapMaybe anonPiTyBinderType_maybe arg_tys
 
     -- Used for arguments to primops and to partial applications
-    arg_ok :: PiTyVarBinder -> CoreExpr -> Bool
-    arg_ok (Named _) _ = True   -- A type argument
-    arg_ok (Anon ty _) arg      -- A term argument
-       | definitelyLiftedType (scaledThing ty)
+    arg_ok :: Type -> CoreExpr -> Bool
+    arg_ok ty arg
+       | definitelyLiftedType ty
        = True -- See Note [Primops with lifted arguments]
+       | otherwise
+       = expr_ok fun_ok primop_ok arg
+
+    -- Used for DataCon worker arguments
+    field_ok :: StrictnessMark -> Type -> CoreExpr -> Bool
+    field_ok str ty arg      -- A term argument
+       | NotMarkedStrict <- str   -- iff it's a lazy field
+       , definitelyLiftedType ty  -- and its type is lifted
+       = True                     -- then the worker app does not eval
        | otherwise
        = expr_ok fun_ok primop_ok arg
 
@@ -1938,12 +1934,14 @@ exprIsConLike = exprIsHNFlike isConLikeId isConLikeUnfolding
 -- or PAPs.
 --
 exprIsHNFlike :: HasDebugCallStack => (Var -> Bool) -> (Unfolding -> Bool) -> CoreExpr -> Bool
-exprIsHNFlike is_con is_con_unf = is_hnf_like
+exprIsHNFlike is_con is_con_unf e
+  = -- pprTraceWith "hnf" (\r -> ppr r <+> ppr e) $
+    is_hnf_like e
   where
     is_hnf_like (Var v) -- NB: There are no value args at this point
-      =  id_app_is_value v 0 -- Catches nullary constructors,
-                             --      so that [] and () are values, for example
-                             -- and (e.g.) primops that don't have unfoldings
+      =  id_app_is_value v [] -- Catches nullary constructors,
+                              --      so that [] and () are values, for example
+                              -- and (e.g.) primops that don't have unfoldings
       || is_con_unf (idUnfolding v)
         -- Check the thing's unfolding; it might be bound to a value
         --   or to a guaranteed-evaluated variable (isEvaldUnfolding)
@@ -1967,31 +1965,57 @@ exprIsHNFlike is_con is_con_unf = is_hnf_like
                                       -- See Note [exprIsHNF Tick]
     is_hnf_like (Cast e _)       = is_hnf_like e
     is_hnf_like (App e a)
-      | isValArg a               = app_is_value e 1
+      | isValArg a               = app_is_value e [a]
       | otherwise                = is_hnf_like e
     is_hnf_like (Let _ e)        = is_hnf_like e  -- Lazy let(rec)s don't affect us
     is_hnf_like _                = False
 
-    -- 'n' is the number of value args to which the expression is applied
-    -- And n>0: there is at least one value argument
-    app_is_value :: CoreExpr -> Int -> Bool
-    app_is_value (Var f)    nva = id_app_is_value f nva
-    app_is_value (Tick _ f) nva = app_is_value f nva
-    app_is_value (Cast f _) nva = app_is_value f nva
-    app_is_value (App f a)  nva
-      | isValArg a              =
-        app_is_value f (nva + 1) &&
-        not (needsCaseBinding (exprType a) a)
-          -- For example  f (x /# y)  where f has arity two, and the first
-          -- argument is unboxed. This is not a value!
-          -- But  f 34#  is a value.
-          -- NB: Check app_is_value first, the arity check is cheaper
-      | otherwise               = app_is_value f nva
-    app_is_value _          _   = False
+    -- Collect arguments through Casts and Ticks and call id_app_is_value
+    app_is_value :: CoreExpr -> [CoreArg] -> Bool
+    app_is_value (Var f)    as = id_app_is_value f as
+    app_is_value (Tick _ f) as = app_is_value f as
+    app_is_value (Cast f _) as = app_is_value f as
+    app_is_value (App f a)  as | isValArg a = app_is_value f (a:as)
+                               | otherwise  = app_is_value f as
+    app_is_value _          _  = False
 
-    id_app_is_value id n_val_args
-       = is_con id
-       || idArity id > n_val_args
+    id_app_is_value id val_args
+       -- First handle saturated applications of DataCons with strict fields
+       | Just dc <- isDataConWorkId_maybe id              -- DataCon
+       , Just str_marks <- dataConRepStrictness_maybe dc  -- with strict fields
+       , assert (val_args `leLength` str_marks) True
+       , val_args `equalLength` str_marks                 -- in a saturated app
+       = all3Prefix check_field str_marks val_arg_tys val_args
+
+       -- Now all applications except saturated DataCon apps with strict fields
+       |  idArity id > length val_args
+            -- PAP: Check unlifted val_args
+       || is_con id && isNothing (isDataConWorkId_maybe id >>= dataConRepStrictness_maybe)
+            -- Either a lazy DataCon or a CONLIKE.
+            -- Hence we only need to check unlifted val_args here.
+            -- NB: We assume that CONLIKEs are lazy, which is their entire
+            --     point.
+       = all2Prefix check_arg val_arg_tys val_args
+
+       | otherwise
+       = False
+       where
+         fun_ty      = idType id
+         (arg_tys,_) = splitPiTys fun_ty
+         val_arg_tys = mapMaybe anonPiTyBinderType_maybe  arg_tys
+         -- val_arg_tys = map exprType val_args, but much less costly.
+         -- The obvious definition regresses T16577 by 30% so we don't do it.
+
+         check_arg a_ty a = mightBeUnliftedType a_ty ==> is_hnf_like a
+          -- Check unliftedness; for example f (x /# 12#) where f has arity two,
+          -- and the first argument is unboxed. This is not a value!
+          -- But  f 34#  is a value, so check args for HNFs.
+          -- NB: We check arity (and CONLIKEness) first because it's cheaper
+          --     and we reject quickly on saturated apps.
+         check_field str a_ty a
+           = isMarkedStrict str || mightBeUnliftedType a_ty ==> is_hnf_like a
+         a ==> b = not a || b
+         infixr 1 ==>
 
 {-
 Note [exprIsHNF Tick]
@@ -2552,7 +2576,7 @@ This means the seqs on x and y both become no-ops and compared to the first vers
 
 The downside is that the caller of $wfoo potentially has to evaluate `y` once if we can't prove it isn't already evaluated.
 But y coming out of a strict field is in WHNF so safe to evaluated. And most of the time it will be properly tagged+evaluated
-already at the call site because of the Strict Field Invariant! See Note [Strict Field Invariant] for more in this.
+already at the call site because of the Strict Field Invariant! See Note [STG Strict Field Invariant] for more in this.
 This makes GHC itself around 1% faster despite doing slightly more work! So this is generally quite good.
 
 We only apply this when we think there is a benefit in doing so however. There are a number of cases in which

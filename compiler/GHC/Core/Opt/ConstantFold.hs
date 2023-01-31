@@ -46,7 +46,7 @@ import GHC.Core
 import GHC.Core.Make
 import GHC.Core.SimpleOpt (  exprIsConApp_maybe, exprIsLiteral_maybe )
 import GHC.Core.DataCon ( DataCon,dataConTagZ, dataConTyCon, dataConWrapId, dataConWorkId )
-import GHC.Core.Utils  ( cheapEqExpr, exprIsHNF
+import GHC.Core.Utils  ( cheapEqExpr, exprOkForSpeculation
                        , stripTicksTop, stripTicksTopT, mkTicks )
 import GHC.Core.Multiplicity
 import GHC.Core.Rules.Config
@@ -1932,7 +1932,7 @@ Things to note
 
 Implementing seq#.  The compiler has magic for SeqOp in
 
-- GHC.Core.Opt.ConstantFold.seqRule: eliminate (seq# <whnf> s)
+- GHC.Core.Opt.ConstantFold.seqRule: eliminate (seq# <ok-for-spec> s)
 
 - GHC.StgToCmm.Expr.cgExpr, and cgCase: special case for seq#
 
@@ -1947,7 +1947,7 @@ Implementing seq#.  The compiler has magic for SeqOp in
 seqRule :: RuleM CoreExpr
 seqRule = do
   [Type _ty_a, Type _ty_s, a, s] <- getArgs
-  guard $ exprIsHNF a
+  guard $ exprOkForSpeculation a
   return $ mkCoreUnboxedTuple [s, a]
 
 -- spark# :: forall a s . a -> State# s -> (# State# s, a #)

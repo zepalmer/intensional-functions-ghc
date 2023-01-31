@@ -48,7 +48,8 @@ module GHC.Core.DataCon (
         dataConIsInfix,
         dataConWorkId, dataConWrapId, dataConWrapId_maybe,
         dataConImplicitTyThings,
-        dataConRepStrictness, dataConImplBangs, dataConBoxer,
+        dataConRepStrictness, dataConRepStrictness_maybe,
+        dataConImplBangs, dataConBoxer,
 
         splitDataProductType_maybe,
 
@@ -59,7 +60,7 @@ module GHC.Core.DataCon (
         isVanillaDataCon, isNewDataCon, isTypeDataCon,
         classDataCon, dataConCannotMatch,
         dataConUserTyVarsNeedWrapper, checkDataConTyVars,
-        isBanged, isMarkedStrict, cbvFromStrictMark, eqHsBang, isSrcStrict, isSrcUnpacked,
+        isBanged, isUnpacked, isMarkedStrict, cbvFromStrictMark, eqHsBang, isSrcStrict, isSrcUnpacked,
         specialPromotedDc,
 
         -- ** Promotion related functions
@@ -95,6 +96,7 @@ import GHC.Types.Unique.FM ( UniqFM )
 import GHC.Types.Unique.Set
 import GHC.Builtin.Uniques( mkAlphaTyVarUnique )
 import GHC.Data.Graph.UnVar  -- UnVarSet and operations
+import GHC.Data.Maybe (orElse)
 
 import GHC.Utils.Outputable
 import GHC.Utils.Misc
@@ -502,6 +504,18 @@ data DataCon
                 -- Matches 1-1 with dcOrigArgTys
                 -- Hence length = dataConSourceArity dataCon
 
+        dcImplBangs :: [HsImplBang],
+                -- The actual decisions made (including failures)
+                -- about the original arguments; 1-1 with orig_arg_tys
+                -- See Note [Bangs on data constructor arguments]
+
+        dcStricts :: [StrictnessMark],
+                -- One mark for every field of the DataCon worker;
+                -- if it's empty, then all fields are lazy,
+                -- otherwise it has the same length as dataConRepArgTys.
+                -- See also Note [Strict fields in Core] in GHC.Core
+                -- for the effect on the strictness signature
+
         dcFields  :: [FieldLabel],
                 -- Field labels for this constructor, in the
                 -- same order as the dcOrigArgTys;
@@ -777,13 +791,6 @@ data DataConRep
                                           -- after unboxing and flattening,
                                           -- and *including* all evidence args
 
-        , dcr_stricts :: [StrictnessMark]  -- 1-1 with dcr_arg_tys
-                -- See also Note [Data-con worker strictness]
-
-        , dcr_bangs :: [HsImplBang]  -- The actual decisions made (including failures)
-                                     -- about the original arguments; 1-1 with orig_arg_tys
-                                     -- See Note [Bangs on data constructor arguments]
-
     }
 
 type DataConEnv a = UniqFM DataCon a     -- Keyed by DataCon
@@ -852,43 +859,8 @@ eqSpecPreds spec = [ mkPrimEqPred (mkTyVarTy tv) ty
 instance Outputable EqSpec where
   ppr (EqSpec tv ty) = ppr (tv, ty)
 
-{- Note [Data-con worker strictness]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Notice that we do *not* say the worker Id is strict even if the data
-constructor is declared strict
-     e.g.    data T = MkT ![Int] Bool
-Even though most often the evals are done by the *wrapper* $WMkT, there are
-situations in which tag inference will re-insert evals around the worker.
-So for all intents and purposes the *worker* MkT is strict, too!
-
-Unfortunately, if we exposed accurate strictness of DataCon workers, we'd
-see the following transformation:
-
-  f xs = case xs of xs' { __DEFAULT -> ... case MkT xs b of x { __DEFAULT -> [x] } } -- DmdAnal: Strict in xs
-  ==> { drop-seq, binder swap on xs' }
-  f xs = case MkT xs b of x { __DEFAULT -> [x] } -- DmdAnal: Still strict in xs
-  ==> { case-to-let }
-  f xs = let x = MkT xs' b in [x] -- DmdAnal: No longer strict in xs!
-
-I.e., we are ironically losing strictness in `xs` by dropping the eval on `xs`
-and then doing case-to-let. The issue is that `exprIsHNF` currently says that
-every DataCon worker app is a value. The implicit assumption is that surrounding
-evals will have evaluated strict fields like `xs` before! But now that we had
-just dropped the eval on `xs`, that assumption is no longer valid.
-
-Long story short: By keeping the demand signature lazy, the Simplifier will not
-drop the eval on `xs` and using `exprIsHNF` to decide case-to-let and others
-remains sound.
-
-Similarly, during demand analysis in dmdTransformDataConSig, we bump up the
-field demand with `C_01`, *not* `C_11`, because the latter exposes too much
-strictness that will drop the eval on `xs` above.
-
-This issue is discussed at length in
-"Failed idea: no wrappers for strict data constructors" in #21497 and #22475.
-
-Note [Bangs on data constructor arguments]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+{- Note [Bangs on data constructor arguments]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Consider
   data T = MkT !Int {-# UNPACK #-} !Int Bool
 
@@ -914,8 +886,8 @@ Terminology:
   the flag settings in the importing module.
   Also see Note [Bangs on imported data constructors] in GHC.Types.Id.Make
 
-* The dcr_bangs field of the dcRep field records the [HsImplBang]
-  If T was defined in this module, Without -O the dcr_bangs might be
+* The dcImplBangs field records the [HsImplBang]
+  If T was defined in this module, Without -O the dcImplBangs might be
     [HsStrict _, HsStrict _, HsLazy]
   With -O it might be
     [HsStrict _, HsUnpack _, HsLazy]
@@ -959,6 +931,17 @@ we consult HsImplBang:
 The boolean flag is used only for this warning.
 See #11270 for motivation.
 
+* Core passes will often need to know whether the DataCon worker or wrapper in
+  an application is strict in some (lifted) field or not. This is tracked in the
+  demand signature attached to a DataCon's worker resp. wrapper Id.
+
+  So if you've got a DataCon dc, you can get the demand signature by
+  `idDmdSig (dataConWorkId dc)` and make out strict args by testing with
+  `isStrictDmd`. Similarly, `idDmdSig <$> dataConWrapId_maybe dc` gives
+  you the demand signature of the wrapper, if it exists.
+
+  These demand signatures are set in GHC.Types.Id.Make.
+
 Note [Data con representation]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 The dcRepType field contains the type of the representation of a constructor
@@ -974,14 +957,14 @@ what it means is the DataCon with all Unpacking having been applied.
 We can think of this as the Core representation.
 
 Here's an example illustrating the Core representation:
-        data Ord a => T a = MkT Int! a Void#
+        data Ord a => T a = MkT !Int a Void#
 Here
         T :: Ord a => Int -> a -> Void# -> T a
 but the rep type is
         Trep :: Int# -> a -> Void# -> T a
 Actually, the unboxed part isn't implemented yet!
 
-Not that this representation is still *different* from runtime
+Note that this representation is still *different* from runtime
 representation. (Which is what STG uses after unarise).
 
 This is how T would end up being used in STG post-unarise:
@@ -1106,6 +1089,11 @@ isBanged (HsUnpack {}) = True
 isBanged (HsStrict {}) = True
 isBanged HsLazy        = False
 
+isUnpacked :: HsImplBang -> Bool
+isUnpacked (HsUnpack {}) = True
+isUnpacked (HsStrict {}) = False
+isUnpacked HsLazy        = False
+
 isSrcStrict :: SrcStrictness -> Bool
 isSrcStrict SrcStrict = True
 isSrcStrict _ = False
@@ -1131,13 +1119,15 @@ cbvFromStrictMark MarkedStrict = MarkedCbv
 
 -- | Build a new data constructor
 mkDataCon :: Name
-          -> Bool           -- ^ Is the constructor declared infix?
-          -> TyConRepName   -- ^  TyConRepName for the promoted TyCon
-          -> [HsSrcBang]    -- ^ Strictness/unpack annotations, from user
-          -> [FieldLabel]   -- ^ Field labels for the constructor,
-                            -- if it is a record, otherwise empty
-          -> [TyVar]        -- ^ Universals.
-          -> [TyCoVar]      -- ^ Existentials.
+          -> Bool               -- ^ Is the constructor declared infix?
+          -> TyConRepName       -- ^  TyConRepName for the promoted TyCon
+          -> [HsSrcBang]        -- ^ Strictness/unpack annotations, from user
+          -> [HsImplBang]       -- ^ Strictness/unpack annotations, as inferred by the compiler
+          -> [StrictnessMark]   -- ^ Strictness marks for the DataCon worker's fields in Core
+          -> [FieldLabel]       -- ^ Field labels for the constructor,
+                                -- if it is a record, otherwise empty
+          -> [TyVar]            -- ^ Universals.
+          -> [TyCoVar]          -- ^ Existentials.
           -> [InvisTVBinder]    -- ^ User-written 'TyVarBinder's.
                                 --   These must be Inferred/Specified.
                                 --   See @Note [TyVarBinders in DataCons]@
@@ -1156,7 +1146,9 @@ mkDataCon :: Name
   -- Can get the tag from the TyCon
 
 mkDataCon name declared_infix prom_info
-          arg_stricts   -- Must match orig_arg_tys 1-1
+          arg_stricts  -- Must match orig_arg_tys 1-1
+          impl_bangs   -- Must match orig_arg_tys 1-1
+          str_marks    -- Must be empty or match dataConRepArgTys 1-1
           fields
           univ_tvs ex_tvs user_tvbs
           eq_spec theta
@@ -1173,6 +1165,8 @@ mkDataCon name declared_infix prom_info
   = con
   where
     is_vanilla = null ex_tvs && null eq_spec && null theta
+    str_marks' | not $ any isMarkedStrict str_marks = []
+               | otherwise                          = str_marks
 
     con = MkData {dcName = name, dcUnique = nameUnique name,
                   dcVanilla = is_vanilla, dcInfix = declared_infix,
@@ -1184,7 +1178,8 @@ mkDataCon name declared_infix prom_info
                   dcStupidTheta = stupid_theta,
                   dcOrigArgTys = orig_arg_tys, dcOrigResTy = orig_res_ty,
                   dcRepTyCon = rep_tycon,
-                  dcSrcBangs = arg_stricts,
+                  dcSrcBangs = arg_stricts, dcImplBangs = impl_bangs,
+                  dcStricts = str_marks',
                   dcFields = fields, dcTag = tag, dcRepType = rep_ty,
                   dcWorkId = work_id,
                   dcRep = rep,
@@ -1412,19 +1407,27 @@ isNullaryRepDataCon :: DataCon -> Bool
 isNullaryRepDataCon dc = dataConRepArity dc == 0
 
 dataConRepStrictness :: DataCon -> [StrictnessMark]
--- ^ Give the demands on the arguments of a
--- Core constructor application (Con dc args)
-dataConRepStrictness dc = case dcRep dc of
-                            NoDataConRep -> [NotMarkedStrict | _ <- dataConRepArgTys dc]
-                            DCR { dcr_stricts = strs } -> strs
+-- ^ Give the demands on the runtime arguments of a Core DataCon worker
+-- application.
+-- The length of the list matches `dataConRepArgTys` (e.g., the number
+-- of runtime arguments).
+dataConRepStrictness dc
+  = dataConRepStrictness_maybe dc
+    `orElse` map (const NotMarkedStrict) (dataConRepArgTys dc)
+
+dataConRepStrictness_maybe :: DataCon -> Maybe [StrictnessMark]
+-- ^ Give the demands on the runtime arguments of a Core DataCon worker
+-- application or `Nothing` if all of them are lazy.
+-- The length of the list matches `dataConRepArgTys` (e.g., the number
+-- of runtime arguments).
+dataConRepStrictness_maybe dc
+  | null (dcStricts dc) = Nothing
+  | otherwise           = Just (dcStricts dc)
 
 dataConImplBangs :: DataCon -> [HsImplBang]
 -- The implementation decisions about the strictness/unpack of each
 -- source program argument to the data constructor
-dataConImplBangs dc
-  = case dcRep dc of
-      NoDataConRep              -> replicate (dcSourceArity dc) HsLazy
-      DCR { dcr_bangs = bangs } -> bangs
+dataConImplBangs dc = dcImplBangs dc
 
 dataConBoxer :: DataCon -> Maybe DataConBoxer
 dataConBoxer (MkData { dcRep = DCR { dcr_boxer = boxer } }) = Just boxer
