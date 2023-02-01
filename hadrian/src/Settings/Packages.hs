@@ -74,6 +74,7 @@ packageArgs = do
             [ andM [expr ghcWithInterpreter, notStage0] `cabalFlag` "internal-interpreter"
             , notM cross `cabalFlag` "terminfo"
             , arg "-build-tool-depends"
+            , flag UseLibzstd `cabalFlag` "with-libzstd"
             ]
 
           , builder (Haddock BuildPackage) ? arg ("--optghc=-I" ++ path) ]
@@ -283,6 +284,8 @@ rtsPackageArgs = package rts ? do
     libdwLibraryDir   <- getSetting LibdwLibDir
     libnumaIncludeDir <- getSetting LibnumaIncludeDir
     libnumaLibraryDir <- getSetting LibnumaLibDir
+    libzstdIncludeDir <- getSetting LibZstdIncludeDir
+    libzstdLibraryDir <- getSetting LibZstdLibDir
 
     -- Arguments passed to GHC when compiling C and .cmm sources.
     let ghcArgs = mconcat
@@ -389,6 +392,7 @@ rtsPackageArgs = package rts ? do
         , builder (Cabal Setup) ? mconcat
               [ cabalExtraDirs libdwIncludeDir libdwLibraryDir
               , cabalExtraDirs libnumaIncludeDir libnumaLibraryDir
+              , cabalExtraDirs libzstdIncludeDir libzstdLibraryDir
               , useSystemFfi ? cabalExtraDirs ffiIncludeDir ffiLibraryDir
               ]
         , builder (Cc (FindCDependencies CDep)) ? cArgs
