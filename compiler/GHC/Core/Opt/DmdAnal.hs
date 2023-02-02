@@ -1935,10 +1935,13 @@ finaliseArgBoxities env fn threshold_arity rhs_dmds div rhs
   -- The normal case
   | otherwise -- NB: threshold_arity might be less than
               -- manifest arity for join points
-  = -- pprTrace "finaliseArgBoxities" (
+  = -- pprTrace "finaliseArgBoxities {" (
     --   vcat [text "function:" <+> ppr fn
+    --        , text "max" <+> ppr max_wkr_args
     --        , text "dmds before:" <+> ppr (map idDemandInfo (filter isId bndrs))
-    --        , text "dmds after: " <+>  ppr arg_dmds' ]) $
+    --        , text "triples:" <+> ppr arg_triples ]) $
+    --   pprTrace "finalase 2 }" (
+    --     vcat [ text "dmds after: " <+>  ppr arg_dmds' ]) $
     (arg_dmds', add_demands arg_dmds' rhs)
     -- add_demands: we must attach the final boxities to the lambda-binders
     -- of the function, both because that's kosher, and because CPR analysis
