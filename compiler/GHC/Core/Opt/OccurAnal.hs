@@ -2422,7 +2422,7 @@ occAnalArgs !env fun args !one_shots
         !(WUD arg_uds arg') = occAnal arg_env arg
         !(arg_env, one_shots')
             | isTypeArg arg = (env, one_shots)
-            | otherwise     = addOneShots env one_shots
+            | otherwise     = addOneShots env_args one_shots
 
 {-
 Applications are dealt with specially because we want
@@ -2712,7 +2712,7 @@ setRhsCtxt :: OccEncl -> OccEnv -> OccEnv
 setRhsCtxt ctxt !env
   = env { occ_encl = ctxt
         , occ_one_shots = []
-        , occ_join_points = emptyVarEnv  -- See Note [OccAnal for join points]
+        , occ_join_points = emptyVarEnv  -- See XXXNoteXXX [OccAnal for join points]
     }
 
 addOneShots :: OccEnv -> [OneShots] -> (OccEnv, [OneShots])
