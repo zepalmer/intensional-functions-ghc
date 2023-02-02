@@ -3472,8 +3472,9 @@ tagNonRecBinder lvl usage binder
  where
     occ     = lookupDetails usage binder
     will_be_join = decideJoinPointHood lvl usage (NE.singleton binder)
-    occ'    | will_be_join = -- must already be marked AlwaysTailCalled
-                             assert (isAlwaysTailCalled occ) occ
+    occ'    | will_be_join = -- Must already be marked AlwaysTailCalled, unless
+                             -- it was a join point before but is now dead
+                             assert (isAlwaysTailCalled occ || isDeadOcc occ) occ
             | otherwise    = markNonTail occ
 
 tagRecBinders :: TopLevelFlag           -- At top level?
@@ -3557,14 +3558,21 @@ decideJoinPointHood :: TopLevelFlag -> UsageDetails
                     -> Bool
 decideJoinPointHood TopLevel _ _
   = False
+
 decideJoinPointHood NotTopLevel usage bndrs
-  | isJoinId (NE.head bndrs)
-  = warnPprTrace (not all_ok)
-                 "OccurAnal failed to rediscover join point(s)" (ppr bndrs)
-                 all_ok
+  | isJoinId bndr1
+--  = warnPprTrace lost_join_point
+--                 "OccurAnal failed to rediscover join point(s)" (ppr bndrs)
+--    all_ok
+  = assertPpr (not lost_join_point) (ppr bndrs)
+    True
+
   | otherwise
   = all_ok
   where
+    bndr1 = NE.head bndrs
+    lost_join_point = not (isDeadOcc (lookupDetails usage bndr1)) && not all_ok
+
     -- See Note [Invariants on join points]; invariants cited by number below.
     -- Invariant 2 is always satisfiable by the simplifier by eta expansion.
     all_ok = -- Invariant 3: Either all are join points or none are
