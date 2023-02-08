@@ -30,7 +30,7 @@ import GHC.Core.Tidy
 import GHC.Core.Seq         ( seqBinds )
 import GHC.Core.Opt.Arity   ( exprArity, typeArity, exprBotStrictness_maybe )
 import GHC.Core.InstEnv
-import GHC.Core.Type     ( Type, tidyTopType )
+import GHC.Core.Type
 import GHC.Core.DataCon
 import GHC.Core.TyCon
 import GHC.Core.Class
@@ -73,6 +73,8 @@ import Data.Function
 import Data.List        ( sortBy, mapAccumL )
 import qualified Data.Set as S
 import GHC.Types.CostCentre
+import GHC.Core.Predicate
+import GHC.Core.Multiplicity
 
 {-
 Constructing the TypeEnv, Instances, Rules from which the
@@ -775,6 +777,8 @@ addExternal opts id
                                  -- source is an inline rule
 
        || not dont_inline
+
+       || isOverloaded id
        where
          dont_inline
             | never_active = True   -- Will never inline
@@ -791,6 +795,22 @@ addExternal opts id
     show_unfolding (DFunUnfolding {}) = True
     show_unfolding _                  = False
 
+isOverloaded :: Id -> Bool
+isOverloaded fn =
+  let fun_type = idType fn
+      -- getRuntimeArgTys can return an infinite list in edge cases.
+      -- If a function has >256 type args and the first 256 don't
+      -- contain a type class we don't expose the unfolding.
+      -- It's an arbitrary limit but seems acceptable to me.
+      (rt_tys,_rt_ty_flag) = unzip $ take 256 $ getRuntimeArgTys fun_type
+      has_dict_arg = any (isClassPred. scaledThing) rt_tys
+  in
+    --  pprTrace "isOverloaded" (hang (text "overloaded:" <> ppr has_dict_arg) 4 $
+    --     text "ty:" <> ppr fun_type $$
+    --     text "getRuntimeArgTys:" <> ppr (getRuntimeArgTys fun_type)
+    --     )
+
+     has_dict_arg
 {-
 ************************************************************************
 *                                                                      *
