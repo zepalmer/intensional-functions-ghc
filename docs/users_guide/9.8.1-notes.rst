@@ -87,6 +87,17 @@ Compiler
 
       deriving instance TypeError (Text "Boo") => Bar Baz
 
+- The compiler may now be configured to compress the debugging information
+  included in :ghc-flag:`-finfo-table-map` enabled binaries. To do so, one must
+  build GHC from source (see
+  `here<https://gitlab.haskell.org/ghc/ghc/-/wikis/building>` for directions)
+  and supply the ``--enable-ipe-data-compression`` flag to the ``configure``
+  script. **Note**: This feature requires that the machine building GHC has
+  `libzstd <https://github.com/facebook/zstd/>`_ installed.
+
+  In a test compiling GHC itself, the size of the :ghc-flag:`-finfo-table-map`
+  enabled build results was reduced by over 20% when compression was enabled.
+
 GHCi
 ~~~~
 
