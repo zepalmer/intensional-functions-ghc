@@ -595,10 +595,119 @@ This showed up when compiling Control.Concurrent.Chan.getChanContents.
 Hence the transitive rule_fv_env stuff described in
 Note [Rules and loop breakers].
 
-------------------------------------------------------------
 Note [Occurrence analysis for join points]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-ToDo: addresses #22404.
+Consider these two somewhat artificial programs (#22404)
+
+  Program (P1)                      Program (P2)
+  ------------------------------    -------------------------------------
+  let v = <small thunk> in          let v = <small thunk> in
+                                    join j = case v of (a,b) -> a
+  in case x of                      in case x of
+        A -> case v of (a,b) -> a         A -> j
+        B -> case v of (a,b) -> a         B -> j
+        C -> case v of (a,b) -> b         C -> case v of (a,b) -> b
+        D -> []                           D -> []
+
+In (P1), `v` gets allocated, as a thunk, every time this code is executed.  But
+notice that `v` occurs at most once in any case branch; the occurrence analyser
+spots this and returns a OneOcc{ occ_n_br = 3 } for `v`.  Then the code in
+GHC.Core.Opt.Simplify.Utils.postInlineUnconditionally inlines `v` at its three
+use sites, and discards the let-binding.  That way, we avoid allocating `v` in
+the A,B,C branches (though we still compute it of course), and branch D
+doesn't involve <small thunk> at all.  This sometimes makes a Really Big
+Difference.
+
+In (P2) we have shared the common RHS of A, B, in a join point `j`.  We would
+like to inline `v1 in just the same way as in (P1).  But if we "andUDs"
+the usage from j's RHS and its body, we'll get ManyOccs for `v`.  Important
+optimisation lost!
+
+The occurrence analyser therefore has clever code that behaves just as
+if you inlined `j` at all its call sites.  Here is a tricky variant (P3)
+to keep in mind:
+    join j = case v of (a,b) -> a
+    in case f v of
+          A -> j
+          B -> j
+          C -> []
+If you mentally inline `j` you'll see that `v` is used twice on the path
+through A, so it should have ManyOcc.  Bear this caes in mind!
+
+* We treat /non-recursive/ join points specially. Recursive join points
+  are treated like any other letrec, as before.  Moreover, we only
+  deal with /pre-existing/ non-recursive join points, not the ones
+  that we discover for the first time in this sweep of the
+  occurrence analyser.
+
+* In occ_env, the new (occ_join_points :: IdEnv UsageDetails) maps
+  each in-scope non-recursive join point, such as `j` above, to
+  a "zeroed form" of its RHS's usage details. The "zeroed form"
+    * deletes ManyOccs
+    * maps a OneOcc to OneOcc{ occ_n_br = 0 }
+  In our example, occ_join_points will be extended with
+      [j :-> [v :-> OneOcc{occ_n_br=0}]]
+  See addJoinPoint.
+
+* At an occurence of a join point, we do everything as normal, but add in the
+  UsageDetails from the occ_join_points.  See mkOneOcc.
+
+* At the NonRec binding of the join point, we use `orUDs`, not `andUDs` to
+  combine the usage from the RHS with the usage from the body.
+
+Here are the consequences
+
+* Because of the perhaps-surprising OneOcc{occ_n_br=0} idea of the zeroed
+  form, the occ_n_br field of a OneOcc binder still counts the number of
+  /actual lexical occurrences/ of the variable.  In Program P2, for example,
+  `v` will end up with OneOcc{occ_n_br=2}, not occ_n_br=3.  There are two
+  lexical occurrences of `v`!
+
+* In the tricky (P3) we'll get an `andUDs` of
+    * OneOcc{occ_n_br=0} from the occurrences of `j`)
+    * OneOcc{occ_n_br=1} from the (f v)
+  These are `andUDs` together, and hence `addOccInfo`, and hence
+  `v` gets ManyOccs, just as it should.  Clever!
+
+There are a couple of tricky wrinkles
+
+(W1) Consider this example which shadows `j`:
+          join j = rhs in
+          in case x of { K j -> ..j..; ... }
+     Clearly when we come to the pattern `K j` we must drop the `j`
+     entry in occ_join_points.
+
+     This is done by `drop_shadowed_joins` in `addInScope`.
+
+(W2) Consider this example which shadows `v`:
+          join j = ...v...
+          in case x of { K v -> ..j..; ... }
+
+     We can't make j's occurrences in the K alternative give rise to an
+     occurrence of `v` (via occ_join_points), because it'll just be deleted by
+     the `K v` pattern.  Yikes.  This is rare because shadowing is rare, but
+     it definitely can happen.  Solution: when bringing `v` into scope at
+     the `K v` pattern, chuck out of occ_join_points any elements whose
+     UsageDetails mentions `v`.  Instead, just `andUDs` all that usage in
+     right here.
+
+     This is done by `add_bad_joins`` in `addInScope`; we use
+     `partitionVarEnv` to identify the `bad_joins` (the ones whose
+     UsageDetails mention the newly bound variables); then for any of /those/
+     that are actually mentioned in the body, use `andUDs` to add their
+     UsageDetails to the returned UsageDetails.  Tricky!
+
+(W3) Consider this example, which shadows `j`, but this time in an argument
+              join j = rhs
+              in f (case x of { K j -> ...; ... })
+     We can zap the occ_join_points when looking at the argument, because
+     `j` can't posibly occur -- it's a join point!  And the smaller
+     occ_join_points is, the better.  Smaller to look up in, less faffing
+     in (W2).
+
+     This is done in setRhsCtxt.
+
+Wrinkles (W1) and (W2) are very similar to Note [Binder swap] (BS3).
 
 Note [Finding join points]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2712,7 +2821,8 @@ setRhsCtxt :: OccEncl -> OccEnv -> OccEnv
 setRhsCtxt ctxt !env
   = env { occ_encl = ctxt
         , occ_one_shots = []
-        , occ_join_points = emptyVarEnv  -- See XXXNoteXXX [OccAnal for join points]
+        , occ_join_points = emptyVarEnv
+          -- See (W3) of Note [Occurrence analysis for join points]
     }
 
 addOneShots :: OccEnv -> [OneShots] -> (OccEnv, [OneShots])
@@ -2744,7 +2854,7 @@ addInScope env@(OccEnv { occ_join_points = join_points })
       = env { occ_bs_env = swap_env `delVarEnvList` bndrs }
 
     drop_shadowed_joins :: OccEnv -> OccEnv
-    -- See Note [Occurrence analysis for join points]
+    -- See Note [Occurrence analysis for join points] wrinkle (W1)
     drop_shadowed_joins env = env { occ_join_points = good_joins `delVarEnvList` bndrs}
 
     fix_up_uds :: WithUsageDetails a -> WithUsageDetails a
@@ -2755,7 +2865,17 @@ addInScope env@(OccEnv { occ_join_points = join_points })
       where
         trimmed_uds      = uds `delDetails` bndrs
         with_co_var_occs = trimmed_uds `addManyOccs` coVarOccs bndrs
-        with_joins       = nonDetStrictFoldUFM andUDs with_co_var_occs bad_joins
+        with_joins       = add_bad_joins with_co_var_occs
+
+    add_bad_joins :: UsageDetails -> UsageDetails
+    add_bad_joins uds = nonDetStrictFoldUFM_Directly add_bad_join uds bad_joins
+
+    add_bad_join :: Unique -> UsageDetails -- Bad join and its usage details
+                 -> UsageDetails -> UsageDetails
+    -- See Note [Occurrence analysis for join points] wrinkle (W2)
+    add_bad_join uniq bad_join_uds uds
+      | uniq `elemUFM_Directly` ud_env uds = uds `andUDs` bad_join_uds
+      | otherwise                          = uds
 
     (bad_joins, good_joins) = partitionVarEnv bad_join_rhs join_points
 
@@ -2763,11 +2883,15 @@ addInScope env@(OccEnv { occ_join_points = join_points })
     bad_join_rhs (UD { ud_env = rhs_usage }) = any (`elemVarEnv` rhs_usage) bndrs
 
 addJoinPoint :: OccEnv -> Id -> UsageDetails -> OccEnv
-addJoinPoint env bndr rhs_uds@(UD { ud_env = rhs_occs })
-  = env { occ_join_points = extendVarEnv (occ_join_points env) bndr join_occ_uds }
-  where
-    join_occ_uds = emptyDetails { ud_env = mapMaybeUFM_Directly do_one rhs_occs }
+addJoinPoint env bndr rhs_uds
+  = env { occ_join_points = extendVarEnv (occ_join_points env)
+                              bndr (mkZeroedForm rhs_uds) }
 
+mkZeroedForm :: UsageDetails -> UsageDetails
+-- See Note [Occurrence analysis for join points] for "zeroed form"
+mkZeroedForm rhs_uds@(UD { ud_env = rhs_occs })
+  = emptyDetails { ud_env = mapMaybeUFM_Directly do_one rhs_occs }
+  where
     do_one :: Unique -> OccInfo -> Maybe OccInfo
     do_one key occ = case doZappingByUnique rhs_uds key occ of
        ManyOccs {}        -> Nothing
