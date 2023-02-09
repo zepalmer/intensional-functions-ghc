@@ -2379,7 +2379,7 @@ occAnal env (Case scrut bndr ty alts)
       WUD alts_usage (tagged_bndr, alts')
          = addInScope env [bndr] $ \env ->
            let alt_env = addBndrSwap scrut' bndr $
-                         setRhsCtxt OccVanilla env
+                         env { occ_encl = OccVanilla }  -- Kill off OccRhs
                WUD alts_usage alts' = do_alts alt_env alts
                tagged_bndr = tagLamBinder alts_usage bndr
            in WUD alts_usage (tagged_bndr, alts')
