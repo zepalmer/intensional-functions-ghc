@@ -2742,6 +2742,8 @@ data OccEnv
            , occ_rule_act   :: Activation -> Bool  -- Which rules are active
              -- See Note [Finding rule RHS free vars]
 
+           , occ_in_scope :: VarSet     -- Set of variables in scope
+
            -- See Note [The binder-swap substitution]
            -- If  x :-> (y, co)  is in the env,
            -- then please replace x by (y |> mco)
@@ -2789,7 +2791,8 @@ type OneShots = [OneShotInfo]
 
 initOccEnv :: OccEnv
 initOccEnv
-  = OccEnv { occ_encl      = OccVanilla
+  = OccEnv { occ_in_scope = emptyVarSet
+           , occ_encl      = OccVanilla
            , occ_one_shots = []
 
                  -- To be conservative, we say that all
@@ -2863,11 +2866,20 @@ isRhsEnv (OccEnv { occ_encl = cxt }) = case cxt of
 addInScope :: OccEnv -> [Var] -> (OccEnv -> WithUsageDetails a)
            -> WithUsageDetails a
 -- Needed for all Vars not just Ids; a TyVar might have a CoVars in its kind
-addInScope env@(OccEnv { occ_join_points = join_points })
+addInScope env@(OccEnv { occ_in_scope = in_scope, occ_join_points = join_points })
            bndrs thing_inside
-  = fix_up_uds $ thing_inside $
-    drop_shadowed_swaps $ drop_shadowed_joins env
+  | not (any (`elemVarSet` in_scope) bndrs)
+  = -- No shadowing here; fast path for this common case
+    fix_up_uds (thing_inside env_w_bndrs)
+
+  | otherwise    -- Shadowing!  Lots of things to do
+  = fix_up_uds $ add_bad_joins $
+    thing_inside $
+    drop_shadowed_swaps $ drop_shadowed_joins $
+    env_w_bndrs
+
   where
+    env_w_bndrs = env { occ_in_scope = in_scope `extendVarSetList` bndrs }
 
     drop_shadowed_swaps :: OccEnv -> OccEnv
     -- See Note [The binder-swap substitution] (BS3)
@@ -2878,21 +2890,25 @@ addInScope env@(OccEnv { occ_join_points = join_points })
       = env { occ_bs_env = swap_env `delVarEnvList` bndrs }
 
     drop_shadowed_joins :: OccEnv -> OccEnv
-    -- See Note [Occurrence analysis for join points] wrinkle (W1)
-    drop_shadowed_joins env = env { occ_join_points = good_joins `delVarEnvList` bndrs}
+    -- See Note [Occurrence analysis for join points] wrinkle2 (W1) and (W2)
+    drop_shadowed_joins env = env { occ_join_points = good_joins `delVarEnvList` bndrs }
 
     fix_up_uds :: WithUsageDetails a -> WithUsageDetails a
     -- Remove usage for bndrs
-    -- Add usage info for (a) CoVars used in the types of bndrs
-    -- and (b) occ_join_points that we cannot push inwards because of shadowing
-    fix_up_uds (WUD uds res) = WUD with_joins res
+    -- Add usage info for CoVars used in the types of bndrs
+    fix_up_uds (WUD uds res) = WUD with_co_var_occs res
       where
         trimmed_uds      = uds `delDetails` bndrs
         with_co_var_occs = trimmed_uds `addManyOccs` coVarOccs bndrs
-        with_joins       = add_bad_joins with_co_var_occs
 
-    add_bad_joins :: UsageDetails -> UsageDetails
-    add_bad_joins uds = nonDetStrictFoldUFM_Directly add_bad_join uds bad_joins
+    add_bad_joins :: WithUsageDetails a -> WithUsageDetails a
+    -- Add usage infor for occ_join_points that we cannot push inwards
+    -- because of shadowing
+    add_bad_joins wuds@(WUD uds res)
+       | isEmptyVarEnv bad_joins  -- Fast path for common case
+       = wuds
+       | otherwise
+       = WUD (nonDetStrictFoldUFM_Directly add_bad_join uds bad_joins) res
 
     add_bad_join :: Unique -> UsageDetails -- Bad join and its usage details
                  -> UsageDetails -> UsageDetails
@@ -2901,6 +2917,7 @@ addInScope env@(OccEnv { occ_join_points = join_points })
       | uniq `elemUFM_Directly` ud_env uds = uds `andUDs` bad_join_uds
       | otherwise                          = uds
 
+    bad_joins, good_joins :: IdEnv UsageDetails
     (bad_joins, good_joins) = partitionVarEnv bad_join_rhs join_points
 
     bad_join_rhs :: UsageDetails -> Bool
