@@ -455,6 +455,7 @@ GarbageCollect (struct GcConfig config,
 
   // check sanity *before* GC
   IF_DEBUG(sanity, checkSanity(false /* before GC */, major_gc));
+  check_gc();
 
   // gather blocks allocated using allocatePinned() from each capability
   // and put them on the g0->large_object list.
@@ -1088,6 +1089,7 @@ GarbageCollect (struct GcConfig config,
   // check for memory leaks if DEBUG is on
   memInventory(DEBUG_gc);
 #endif
+  check_gc();
 
   // ok, GC over: tell the stats department what happened.
   stat_endGCWorker(cap, gct);
