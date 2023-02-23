@@ -2034,10 +2034,7 @@ genLit _ CmmHighStackMark
 --
 
 convertMemoryOrdering :: MemoryOrdering -> LlvmSyncOrdering
-convertMemoryOrdering MemOrderRelaxed = SyncMonotonic
-convertMemoryOrdering MemOrderAcquire = SyncAcquire
-convertMemoryOrdering MemOrderRelease = SyncRelease
-convertMemoryOrdering MemOrderSeqCst  = SyncSeqCst
+convertMemoryOrdering _  = SyncSeqCst
 
 -- | Find CmmRegs that get assigned and allocate them on the stack
 --
