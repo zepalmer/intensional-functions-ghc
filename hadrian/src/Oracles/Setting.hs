@@ -17,6 +17,8 @@ module Oracles.Setting (
     ghcWithInterpreter
     ) where
 
+import System.Directory
+import Hadrian.Expression
 import Hadrian.Expression
 import Hadrian.Oracles.TextFile
 import Hadrian.Oracles.Path
@@ -333,7 +335,9 @@ ghcCanonVersion = do
 
 -- | Path to the GHC source tree.
 topDirectory :: Action FilePath
-topDirectory = fixAbsolutePathOnWindows =<< setting GhcSourcePath
+topDirectory = do
+    x <- fixAbsolutePathOnWindows =<< setting GhcSourcePath
+    liftIO $ canonicalizePath x
 
 ghcVersionStage :: Stage -> Action String
 ghcVersionStage (Stage0 {}) = setting GhcVersion
