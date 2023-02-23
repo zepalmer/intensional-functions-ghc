@@ -952,7 +952,7 @@ void check_gc()
                     /* not in the snapshot; nothing to assert */
                 }
             } else if (bd->flags & BF_LARGE) {
-                if (! (bd->flags & BF_MARKED)) {
+                if (! (bd->flags & BF_MARKED || bd->flags & BF_EVACUATED)) {
                     errors.push_back(Error(c, "is unmarked large object"));
                 }
             } else {
