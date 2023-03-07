@@ -9,7 +9,7 @@ The simplifier utilities
 module GHC.Core.Opt.Simplify.Utils (
         -- Rebuilding
         rebuildLam, mkCase, prepareAlts,
-        tryEtaExpandRhs, wantEtaExpansion,
+        tryEtaExpandRhs, tryEtaExpandArg, wantEtaExpansion,
 
         -- Inlining,
         preInlineUnconditionally, postInlineUnconditionally,
@@ -461,8 +461,9 @@ mkRhsStop :: OutType -> RecFlag -> Demand -> SimplCont
 -- See Note [RHS of lets] in GHC.Core.Unfold
 mkRhsStop ty is_rec bndr_dmd = Stop ty (RhsCtxt is_rec) (subDemandIfEvaluated bndr_dmd)
 
-mkLazyArgStop :: OutType -> ArgInfo -> SimplCont
-mkLazyArgStop ty fun_info = Stop ty (lazyArgContext fun_info) arg_sd
+mkLazyArgStop :: OutType -> Maybe ArgInfo -> SimplCont
+mkLazyArgStop ty Nothing         = mkBoringStop ty
+mkLazyArgStop ty (Just fun_info) = Stop ty (lazyArgContext fun_info) arg_sd
   where
     arg_sd = subDemandIfEvaluated (Partial.head (ai_dmds fun_info))
 
@@ -1738,7 +1739,7 @@ rebuildLam env bndrs@(bndr:_) body cont
       , seEtaExpand env
       , any isRuntimeVar bndrs  -- Only when there is at least one value lambda already
       , Just body_arity <- exprEtaExpandArity (seArityOpts env) body
-      = do { tick (EtaExpansion bndr)
+      = do { tick (EtaExpansion Nothing)
            ; let body' = etaExpandAT in_scope body_arity body
            ; traceSmpl "eta expand" (vcat [text "before" <+> ppr body
                                           , text "after" <+> ppr body'])
@@ -1859,15 +1860,39 @@ tryEtaExpandRhs :: SimplEnv -> BindContext -> OutId -> OutExpr
                 -> SimplM (ArityType, OutExpr)
 -- See Note [Eta-expanding at let bindings]
 tryEtaExpandRhs env bind_cxt bndr rhs
+  = tryEtaExpandArgOrRhs env mb_rec_bndr (isJoinBC bind_cxt)
+                         (idDemandOneShots bndr) rhs (idType bndr)
+  where
+    mb_rec_bndr = case bindContextRec bind_cxt of
+      Recursive    -> Just bndr
+      NonRecursive -> Nothing
+
+tryEtaExpandArg :: SimplEnv -> Demand -> OutExpr -> OutType
+                -> SimplM (ArityType, OutExpr)
+-- See Note [Eta-expanding at let bindings]
+tryEtaExpandArg env arg_dmd arg arg_ty
+  = tryEtaExpandArgOrRhs env Nothing False (argOneShots arg_dmd) arg arg_ty
+
+tryEtaExpandArgOrRhs
+  :: SimplEnv
+  -> Maybe OutId    -- ^ `Just bndr` when it's a recursive RHS bound by bndr
+  -> Bool           -- ^ Is it a join binding?
+  -> [OneShotInfo]  -- ^ The one-shot info from the use sites, perhaps from
+                    -- `idDemandOneShots` of the binder
+  -> OutExpr        -- ^ The RHS (or argument expression)
+  -> OutType        -- ^ Type of the CoreExpr
+  -> SimplM (ArityType, OutExpr)
+-- See Note [Eta-expanding at let bindings]
+tryEtaExpandArgOrRhs env mb_rec_bndr is_join use_one_shots rhs rhs_ty
   | do_eta_expand           -- If the current manifest arity isn't enough
                             --    (never true for join points)
   , seEtaExpand env         -- and eta-expansion is on
   , wantEtaExpansion rhs
   = -- Do eta-expansion.
-    assertPpr( not (isJoinBC bind_cxt) ) (ppr bndr) $
+    assertPpr( not is_join ) (ppr mb_rec_bndr) $
        -- assert: this never happens for join points; see GHC.Core.Opt.Arity
        --         Note [Do not eta-expand join points]
-    do { tick (EtaExpansion bndr)
+    do { tick (EtaExpansion mb_rec_bndr)
        ; return (arity_type, etaExpandAT in_scope arity_type rhs) }
 
   | otherwise
@@ -1876,8 +1901,7 @@ tryEtaExpandRhs env bind_cxt bndr rhs
   where
     in_scope   = getInScope env
     arity_opts = seArityOpts env
-    is_rec     = bindContextRec bind_cxt
-    (do_eta_expand, arity_type) = findRhsArity arity_opts is_rec bndr rhs
+    (do_eta_expand, arity_type) = findRhsArity arity_opts mb_rec_bndr is_join use_one_shots rhs rhs_ty
 
 wantEtaExpansion :: CoreExpr -> Bool
 -- Mostly True; but False of PAPs which will immediately eta-reduce again
@@ -1889,6 +1913,30 @@ wantEtaExpansion (App e _)              = wantEtaExpansion e
 wantEtaExpansion (Var {})               = False
 wantEtaExpansion (Lit {})               = False
 wantEtaExpansion _                      = True
+
+idDemandOneShots :: Id -> [OneShotInfo]
+idDemandOneShots bndr
+  = call_arity_one_shots `zip_lams` dmd_one_shots
+  where
+    call_arity_one_shots :: [OneShotInfo]
+    call_arity_one_shots
+      | call_arity == 0 = []
+      | otherwise       = NoOneShotInfo : replicate (call_arity-1) OneShotLam
+    -- Call Arity analysis says the function is always called
+    -- applied to this many arguments.  The first NoOneShotInfo is because
+    -- if Call Arity says "always applied to 3 args" then the one-shot info
+    -- we get is [NoOneShotInfo, OneShotLam, OneShotLam]
+    call_arity = idCallArity bndr
+
+    dmd_one_shots :: [OneShotInfo]
+    -- If the demand info is C(x,C(1,C(1,.))) then we know that an
+    -- application to one arg is also an application to three
+    dmd_one_shots = argOneShots (idDemandInfo bndr)
+
+    -- Take the *longer* list
+    zip_lams (lam1:lams1) (lam2:lams2) = (lam1 `bestOneShot` lam2) : zip_lams lams1 lams2
+    zip_lams []           lams2        = lams2
+    zip_lams lams1        []           = lams1
 
 {-
 Note [Eta-expanding at let bindings]

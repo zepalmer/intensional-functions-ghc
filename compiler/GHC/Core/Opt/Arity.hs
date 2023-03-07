@@ -872,9 +872,16 @@ exprEtaExpandArity opts e
 *                                                                      *
 ********************************************************************* -}
 
-findRhsArity :: ArityOpts -> RecFlag -> Id -> CoreExpr
-             -> (Bool, SafeArityType)
--- This implements the fixpoint loop for arity analysis
+findRhsArity
+  :: ArityOpts
+  -> Maybe Id       -- ^ `Just bndr` when it's a recursive RHS bound by bndr
+  -> Bool           -- ^ Is it a join binding?
+  -> [OneShotInfo]  -- ^ The one-shot info from the use sites, perhaps from
+                    -- `idDemandOneShots` of the binder
+  -> CoreExpr       -- ^ The RHS (or argument expression)
+  -> Type           -- ^ Type of the CoreExpr
+  -> (Bool, SafeArityType)
+-- ^ This implements the fixpoint loop for arity analysis
 -- See Note [Arity analysis]
 --
 -- The Bool is True if the returned arity is greater than (exprArity rhs)
@@ -884,8 +891,8 @@ findRhsArity :: ArityOpts -> RecFlag -> Id -> CoreExpr
 -- Returns an SafeArityType that is guaranteed trimmed to typeArity of 'bndr'
 --         See Note [Arity trimming]
 
-findRhsArity opts is_rec bndr rhs
-  | isJoinId bndr
+findRhsArity opts mb_rec_bndr is_join use_one_shots rhs rhs_ty
+  | is_join
   = (False, join_arity_type)
     -- False: see Note [Do not eta-expand join points]
     -- But do return the correct arity and bottom-ness, because
@@ -900,28 +907,27 @@ findRhsArity opts is_rec bndr rhs
     old_arity = exprArity rhs
 
     init_env :: ArityEnv
-    init_env = findRhsArityEnv opts (isJoinId bndr)
+    init_env = findRhsArityEnv opts is_join
 
     -- Non-join-points only
-    non_join_arity_type = case is_rec of
-                             Recursive    -> go 0 botArityType
-                             NonRecursive -> step init_env
+    non_join_arity_type = case mb_rec_bndr of
+                             Just bndr    -> go 0 bndr botArityType
+                             Nothing      -> step init_env
     arity_increased = arityTypeArity non_join_arity_type > old_arity
 
     -- Join-points only
     -- See Note [Arity for non-recursive join bindings]
     -- and Note [Arity for recursive join bindings]
-    join_arity_type = case is_rec of
-                         Recursive    -> go 0 botArityType
-                         NonRecursive -> trimArityType ty_arity (cheapArityType rhs)
+    join_arity_type = case mb_rec_bndr of
+                         Just bndr    -> go 0 bndr botArityType
+                         Nothing      -> trimArityType ty_arity (cheapArityType rhs)
 
-    ty_arity     = typeArity (idType bndr)
-    id_one_shots = idDemandOneShots bndr
+    ty_arity     = typeArity rhs_ty
 
     step :: ArityEnv -> SafeArityType
     step env = trimArityType ty_arity $
                safeArityType $ -- See Note [Arity invariants for bindings], item (3)
-               arityType env rhs `combineWithDemandOneShots` id_one_shots
+               arityType env rhs `combineWithDemandOneShots` use_one_shots
        -- trimArityType: see Note [Trim arity inside the loop]
        -- combineWithDemandOneShots: take account of the demand on the
        -- binder.  Perhaps it is always called with 2 args
@@ -934,8 +940,8 @@ findRhsArity opts is_rec bndr rhs
     -- is assumed to be sound. In other words, arities should never
     -- decrease.  Result: the common case is that there is just one
     -- iteration
-    go :: Int -> SafeArityType -> SafeArityType
-    go !n cur_at@(AT lams div)
+    go :: Int -> Id -> SafeArityType -> SafeArityType
+    go !n bndr cur_at@(AT lams div)
       | not (isDeadEndDiv div)           -- the "stop right away" case
       , length lams <= old_arity = cur_at -- from above
       | next_at == cur_at        = cur_at
@@ -944,7 +950,7 @@ findRhsArity opts is_rec bndr rhs
       = warnPprTrace (debugIsOn && n > 2)
             "Exciting arity"
             (nest 2 (ppr bndr <+> ppr cur_at <+> ppr next_at $$ ppr rhs)) $
-        go (n+1) next_at
+        go (n+1) bndr next_at
       where
         next_at = step (extendSigEnv init_env bndr cur_at)
 
@@ -963,30 +969,6 @@ combineWithDemandOneShots at@(AT lams div) oss
                                            | _ <- takeWhile isOneShotInfo oss]
     zip_lams ((ch,os1):lams) (os2:oss)
       = (ch, os1 `bestOneShot` os2) : zip_lams lams oss
-
-idDemandOneShots :: Id -> [OneShotInfo]
-idDemandOneShots bndr
-  = call_arity_one_shots `zip_lams` dmd_one_shots
-  where
-    call_arity_one_shots :: [OneShotInfo]
-    call_arity_one_shots
-      | call_arity == 0 = []
-      | otherwise       = NoOneShotInfo : replicate (call_arity-1) OneShotLam
-    -- Call Arity analysis says the function is always called
-    -- applied to this many arguments.  The first NoOneShotInfo is because
-    -- if Call Arity says "always applied to 3 args" then the one-shot info
-    -- we get is [NoOneShotInfo, OneShotLam, OneShotLam]
-    call_arity = idCallArity bndr
-
-    dmd_one_shots :: [OneShotInfo]
-    -- If the demand info is C(x,C(1,C(1,.))) then we know that an
-    -- application to one arg is also an application to three
-    dmd_one_shots = argOneShots (idDemandInfo bndr)
-
-    -- Take the *longer* list
-    zip_lams (lam1:lams1) (lam2:lams2) = (lam1 `bestOneShot` lam2) : zip_lams lams1 lams2
-    zip_lams []           lams2        = lams2
-    zip_lams lams1        []           = lams1
 
 {- Note [Arity analysis]
 ~~~~~~~~~~~~~~~~~~~~~~~~

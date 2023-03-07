@@ -226,7 +226,7 @@ data Tick  -- See Note [Which transformations are innocuous]
   | RuleFired                   FastString      -- Rule name
 
   | LetFloatFromLet
-  | EtaExpansion                Id      -- LHS binder
+  | EtaExpansion                (Maybe Id)      -- LHS binder, if recursive
   | EtaReduction                Id      -- Binder on outer lambda
   | BetaReduction               Id      -- Lambda binder
 

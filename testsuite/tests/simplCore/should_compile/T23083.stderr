@@ -1,0 +1,36 @@
+
+==================== Tidy Core ====================
+Result size of Tidy Core = {terms: 21, types: 17, coercions: 0, joins: 0/0}
+
+-- RHS size: {terms: 6, types: 6, coercions: 0, joins: 0/0}
+g :: ((Integer -> Integer) -> Integer) -> (Integer -> Integer) -> Integer
+[GblId, Arity=2, Str=<1C(1,L)><LC(S,L)>, Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True, WorkFree=True, Expandable=True, Guidance=IF_ARGS [60 60] 50 0}]
+g = \ (f :: (Integer -> Integer) -> Integer) (h :: Integer -> Integer) -> f (\ (eta :: Integer) -> h eta)
+
+-- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
+T23083.$trModule4 :: GHC.Prim.Addr#
+[GblId, Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True, WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 20 0}]
+T23083.$trModule4 = "main"#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+T23083.$trModule3 :: GHC.Types.TrName
+[GblId, Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True, WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 10}]
+T23083.$trModule3 = GHC.Types.TrNameS T23083.$trModule4
+
+-- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
+T23083.$trModule2 :: GHC.Prim.Addr#
+[GblId, Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True, WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 30 0}]
+T23083.$trModule2 = "T23083"#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+T23083.$trModule1 :: GHC.Types.TrName
+[GblId, Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True, WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 10}]
+T23083.$trModule1 = GHC.Types.TrNameS T23083.$trModule2
+
+-- RHS size: {terms: 3, types: 0, coercions: 0, joins: 0/0}
+T23083.$trModule :: GHC.Types.Module
+[GblId, Unf=Unf{Src=<vanilla>, TopLvl=True, Value=True, ConLike=True, WorkFree=True, Expandable=True, Guidance=IF_ARGS [] 10 10}]
+T23083.$trModule = GHC.Types.Module T23083.$trModule3 T23083.$trModule1
+
+
+
