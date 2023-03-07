@@ -1421,10 +1421,31 @@ cpeArg env dmd arg
        ; if exprIsTrivial arg2
          then return (floats2, arg2)
          else do { v <- newVar arg_ty
-                 ; let arg3      = cpeEtaExpand (exprArity arg2) arg2
+                 -- See Note [Eta expansion of arguments in CorePrep]
+                 ; let arity | Just ao <- cp_arityOpts (cpe_config env) -- Just <=> -O2
+                             , not (is_join_head arg2)
+                             -- See Note [Eta expansion for join points]
+                             -- Eta expanding the join point would
+                             -- introduce crap that we can't generate
+                             -- code for
+                             = case exprEtaExpandArity ao arg2 of
+                                 Nothing -> 0
+                                 Just at -> arityTypeArity at
+                             | otherwise
+                             = exprArity arg2 -- this is cheap enough for -O0 and -O1
+                       arg3 = cpeEtaExpand arity arg2
                        arg_float = mkFloat env dmd is_unlifted v arg3
                  ; return (addFloat floats2 arg_float, varToCoreExpr v) }
        }
+
+is_join_head :: CoreExpr -> Bool
+-- ^ Identify the cases where our mishandling described in
+-- Note [Eta expansion for join points] would generate crap
+is_join_head (Let bs e)        = isJoinBind bs || is_join_head e
+is_join_head (Cast e _)        = is_join_head e
+is_join_head (Tick _ e)        = is_join_head e
+is_join_head (Case _ _ _ alts) = any is_join_head (rhssOfAlts alts)
+is_join_head _                 = False
 
 {-
 Note [Floating unlifted arguments]
@@ -1543,6 +1564,44 @@ and now we do NOT want eta expansion to give
 Instead GHC.Core.Opt.Arity.etaExpand gives
                 f = /\a -> \y -> let s = h 3 in g s y
 
+Note [Eta expansion of arguments in CorePrep]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Suppose `g = \x y. blah` and consider the expression `f (g x)`; we ANFise to
+
+  let t = g x
+  in f t
+
+We really don't want that `t` to be a thunk! That just wastes runtime, updating
+a thunk with a PAP etc. The code generator could in principle allocate a PAP,
+but in fact it does not know how to do that -- it's easier just to eta-expand:
+
+  let t = \y. g x y
+  in f t
+
+To what arity should we eta-expand the argument? `cpeArg` uses two strategies,
+governed by the presence of `-fdo-clever-arg-eta-expansion` (implied by -O):
+
+  1. Cheap, with -O0: just use `exprArity`.
+  2. More clever but expensive, with -O1 -O2: use `exprEtaExpandArity`,
+     same function the Simplifier uses to eta expand RHSs and lambda bodies.
+
+The only reason for using (1) rather than (2) is to keep compile times down.
+Using (2) in -O0 bumped up compiler allocations by 2-3% in tests T4801 and
+T5321*. However, Plan (2) catches cases that (1) misses.
+For example (#23083, assuming -fno-pedantic-bottoms):
+
+  let t = case z of __DEFAULT -> g x
+  in f t
+
+to
+
+  let t = \y -> case z of __DEFAULT -> g x y
+  in f t
+
+Note that there is a missed opportunity in eta expanding `t` earlier, in the
+Simplifier: It would allow us to inline `g`, potentially enabling further
+simplification. But then we could have inlined `g` into the PAP to begin with,
+and that is discussed in #23150; hence we needn't worry about that in CorePrep.
 -}
 
 cpeEtaExpand :: Arity -> CpeRhs -> CpeRhs
@@ -1952,6 +2011,11 @@ data CorePrepConfig = CorePrepConfig
   , cp_convertNumLit           :: !(LitNumType -> Integer -> Maybe CoreExpr)
   -- ^ Convert some numeric literals (Integer, Natural) into their final
   -- Core form.
+
+  , cp_arityOpts               :: !(Maybe ArityOpts)
+  -- ^ Configuration for arity analysis ('exprEtaExpandArity').
+  -- See Note [Eta expansion of arguments in CorePrep]
+  -- When 'Nothing' (e.g., -O0, -O1), use the cheaper 'exprArity' instead
   }
 
 data CorePrepEnv
@@ -1962,6 +2026,7 @@ data CorePrepEnv
         -- enabled we instead produce an 'error' expression to catch
         -- the case where a function we think should bottom
         -- unexpectedly returns.
+
         , cpe_env             :: IdEnv CoreExpr   -- Clone local Ids
         -- ^ This environment is used for three operations:
         --

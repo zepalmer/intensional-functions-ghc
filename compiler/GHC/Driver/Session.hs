@@ -3467,6 +3467,7 @@ fFlagsDeps = [
       Opt_DmdTxDictSel "effect is now unconditionally enabled",
   flagSpec "do-eta-reduction"                 Opt_DoEtaReduction,
   flagSpec "do-lambda-eta-expansion"          Opt_DoLambdaEtaExpansion,
+  flagSpec "do-clever-arg-eta-expansion"      Opt_DoCleverArgEtaExpansion,
   flagSpec "eager-blackholing"                Opt_EagerBlackHoling,
   flagSpec "embed-manifest"                   Opt_EmbedManifest,
   flagSpec "enable-rewrite-rules"             Opt_EnableRewriteRules,
@@ -4059,6 +4060,7 @@ optLevelFlags :: [([Int], GeneralFlag)]
 -- Default settings of flags, before any command-line overrides
 optLevelFlags -- see Note [Documenting optimisation flags]
   = [ ([0,1,2], Opt_DoLambdaEtaExpansion)
+    , ([1,2],   Opt_DoCleverArgEtaExpansion)
     , ([0,1,2], Opt_DoEtaReduction)       -- See Note [Eta-reduction in -O0]
     , ([0,1,2], Opt_LlvmTBAA)
     , ([0,1,2], Opt_ProfManualCcs )
