@@ -1087,11 +1087,12 @@ data HsExpansion orig expanded
   = HsExpanded orig expanded
   deriving Data
 
--- | Just print the original expression (the @a@).
+-- | Just print the original expression (the @a@) with the expanded version (the @b@)
 instance (Outputable a, Outputable b) => Outputable (HsExpansion a b) where
   ppr (HsExpanded orig expanded)
-    = ifPprDebug (vcat [ppr orig, braces (text "Expansion:" <+> ppr expanded)])
-                 (ppr orig)
+    -- = ifPprDebug (vcat [ppr orig, braces (text "Expansion:" <+> ppr expanded)])
+    --             (ppr orig)
+    = ppr orig <+> braces (text "Expansion:" <+> ppr expanded)
 
 
 {-
@@ -1992,6 +1993,13 @@ matchDoContextErrString (DoExpr m)   = prependQualified m (text "'do' block")
 matchDoContextErrString (MDoExpr m)  = prependQualified m (text "'mdo' block")
 matchDoContextErrString ListComp     = text "list comprehension"
 matchDoContextErrString MonadComp    = text "monad comprehension"
+
+instance Outputable HsDoFlavour where
+  ppr (DoExpr m) = text "DoExpr" <+> parens (ppr m)
+  ppr (MDoExpr m) = text "MDoExpr" <+> parens (ppr m)
+  ppr GhciStmtCtxt = text "GhciStmtCtxt"
+  ppr ListComp = text "ListComp"
+  ppr MonadComp = text "MonadComp"
 
 pprMatchInCtxt :: (OutputableBndrId idR, Outputable body)
                => Match (GhcPass idR) body -> SDoc
