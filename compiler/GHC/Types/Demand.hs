@@ -2143,6 +2143,74 @@ type's depth! So in mkDmdSigForArity we make sure to trim the list of
 argument demands to the given threshold arity. Call sites will make sure that
 this corresponds to the arity of the call demand that elicited the wrapped
 demand type. See also Note [What are demand signatures?].
+
+See also Note [Threshold arity of join points] for how the threshold arity of
+join points is special.
+
+Note [Threshold arity of join points]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The threshold arity in the demand signature of a join point might be
+
+  * Less than `idArity`:
+      join j x = \pqr. blah in ...(jump j 1)... (jump j 2)...
+    Here idArity is 4, but join-arity is 1.
+  * More than `idArity`:
+      f g = g 42   :: <C(1,L)>
+      h x = f (join j y = (+) y in ... j 13 ...)
+    Note that f's demand on its arg must apply is put on the join expr and hence
+    its RHS.
+    How this is achieved is described in Note [Demand analysis for join points].
+    In this Note, we refer to it as the know-context assumption.
+
+The latter example is interesting, because there analysis ends up with a demand
+/type/ of <1!L><1!L> for the RHS of the `j`, based on the arity 2 signature of
+`(+)`.
+
+Why trim down demand signatures?
+--------------------------------
+When we finalise the demand /signature/ for `j`, we have to trim this signature
+to have a depth (number of arg dmds) of 1.
+
+The reason for that is a tension between the most precise demand signature
+possible (<1L><1L>) and its piggy-backed /boxity/ signature (<!><!>). The latter
+is relevant to WW and if we keep length 2, WW would end up eta-expanding `j` for
+arity 2, destroying its joinpointhood.
+
+So `finaliseArgBoxities` will instead drop one arg, but /keep the boxity info
+on it/. The former is sound because demand analysis knows that `j` will always
+be called with 2 arguments anyway, but the latter may introduce reboxing for `j`
+above if we don't inline `(+)` (which presumably we'll do only for arity 2):
+  join   j y = case y of I# y# -> $wj y#
+       $wj y# = (+) (I# y#)
+  in ...
+Note the reboxing in $wj. On the other hand, all reboxing would
+vanish if we inlined `(+)`, so for now we simply emit a warning in
+GHC.Core.Opt.WorkWrap.splitFun to collect examples when such a potentially
+undesirable split happens.
+
+Undesirable consequence of trimming
+-----------------------------------
+The final demand signature for `j` above is `<1L>` (nevermind boxity here), but
+the *correct* threshold arity is still that of the original demand type,
+namely 2. So we violate the coupling of arg dmds and threshold arity in demand
+signatures we so painfully stated in Note [Understanding DmdType and DmdSig].
+
+It would be unsound to unleash the signature in an arity 1 call context such as
+`Just (j x)`, for example. Nevertheless, because `j` is a join point, all its
+call contexts are fixed and won't change unless the demand on the whole join
+expression changes, so every practical use of the signature is sound even for
+arity 1 (all calls of syntactic arity 1 will ultimately be a call with arity 2).
+
+BUT, certain transformations can destroy the known-context assumption. For
+example, when we demote `j` to a let binding and realise that its RHS does not
+reference `x`, we might be tempted to float it to the top-level. If we do so,
+we should be sure to discard its demand signature, because there is nothing
+preventing to e.g., CSE two calls `j 13` and/or perform it repeatedly.
+
+FloatOut will actually float join points to top-level but is unconcerned about
+this issue. Fortunately, Demand Analysis runs after FloatOut, so this has not
+become an issue in practice; still, it is worth keeping an eye out for and at
+least documenting this potential issue.
 -}
 
 -- | The depth of the wrapped 'DmdType' encodes the arity at which it is safe

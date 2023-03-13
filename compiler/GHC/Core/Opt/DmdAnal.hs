@@ -1940,6 +1940,12 @@ finaliseArgBoxities env fn threshold_arity rhs_dmds div rhs
     --   vcat [text "function:" <+> ppr fn
     --        , text "dmds before:" <+> ppr (map idDemandInfo (filter isId bndrs))
     --        , text "dmds after: " <+>  ppr arg_dmds' ]) $
+    warnPprTrace (isJoinId fn && length rhs_dmds > threshold_arity)
+                 "finaliseArgBoxities: excess rhs_dmds of join point"
+                 (ppr fn <+> ppr threshold_arity <+> ppr rhs_dmds) $
+                  -- It is far from clear that it's OK to ignore excess rhs_dmds
+                  -- here rather than zap all boxity. Hence we warn to collect
+                  -- some examples. See Note [Threshold arity of join points]
     (arg_dmds', set_lam_dmds arg_dmds' rhs)
     -- set_lam_dmds: we must attach the final boxities to the lambda-binders
     -- of the function, both because that's kosher, and because CPR analysis

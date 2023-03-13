@@ -758,9 +758,11 @@ by LitRubbish (see Note [Drop absent bindings]) so there is no great harm.
 splitFun :: WwOpts -> Id -> CoreExpr -> UniqSM [(Id, CoreExpr)]
 splitFun ww_opts fn_id rhs
   | Just (arg_vars, body) <- collectNValBinders_maybe (length wrap_dmds) rhs
-  = warnPprTrace (not (wrap_dmds `lengthIs` (arityInfo fn_info)))
+  = warnPprTrace (if isJoinId fn_id
+                    then not (arg_vars  `lengthAtMost` idJoinArity fn_id) -- See Note [Threshold arity of join points]
+                    else not (wrap_dmds `lengthIs`     (arityInfo fn_info)))
                  "splitFun"
-                 (ppr fn_id <+> (ppr wrap_dmds $$ ppr cpr)) $
+                 (sep [ ppr fn_id, ppr (arityInfo fn_info), ppr wrap_dmds, ppr cpr]) $
     do { mb_stuff <- mkWwBodies ww_opts fn_id arg_vars (exprType body) wrap_dmds cpr
        ; case mb_stuff of
             Nothing -> -- No useful wrapper; leave the binding alone
