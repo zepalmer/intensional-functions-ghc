@@ -1559,6 +1559,7 @@ emitPrimOp cfg primop =
   ResizeMutableByteArrayOp_Char -> alwaysExternal
   ShrinkSmallMutableArrayOp_Char -> alwaysExternal
   NewMutVarOp -> alwaysExternal
+  AtomicSwapMutVarOp -> alwaysExternal
   AtomicModifyMutVar2Op -> alwaysExternal
   AtomicModifyMutVar_Op -> alwaysExternal
   CasMutVarOp -> alwaysExternal
