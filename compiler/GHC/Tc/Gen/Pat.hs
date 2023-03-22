@@ -104,7 +104,7 @@ tcLetPat sig_fn no_gen pat pat_ty thing_inside
 
 -----------------
 tcPats :: HsMatchContext GhcTc
-       -> [LPat GhcRn]             -- ^ atterns
+       -> [LPat GhcRn]             -- ^ patterns
        -> [Scaled ExpSigmaTypeFRR] -- ^ types of the patterns
        -> TcM a                    -- ^ checker for the body
        -> TcM ([LPat GhcTc], a)

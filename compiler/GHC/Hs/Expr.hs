@@ -446,6 +446,23 @@ type instance XXExpr GhcTc = XXExprGhcTc
 -- HsExpansion: see Note [Rebindable syntax and HsExpansion] below
 
 
+
+{- *********************************************************************
+*                                                                      *
+              Generating code for HsExpanded
+      See Note [Handling overloaded and rebindable constructs]
+*                                                                      *
+********************************************************************* -}
+
+-- | Build a 'HsExpansion' out of an extension constructor,
+--   and the two components of the expansion: original and
+--   desugared expressions.
+mkExpandedExpr
+  :: HsExpr GhcRn           -- ^ source expression
+  -> HsExpr GhcRn           -- ^ expanded expression
+  -> HsExpr GhcRn           -- ^ suitably wrapped 'HsExpansion'
+mkExpandedExpr a b = XExpr (HsExpanded a b)
+
 data XXExprGhcTc
   = WrapExpr        -- Type and evidence application and abstractions
       {-# UNPACK #-} !(HsWrap HsExpr)
