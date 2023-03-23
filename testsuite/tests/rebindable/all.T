@@ -45,4 +45,4 @@ test('T20126', normal, compile_fail, [''])
 # Tests for desugaring do before typechecking
 test('T18324', normal, compile, [''])
 test('T23147', normal, compile, [''])
-test('pattern-fails', normal, compile, [''])
+test('pattern-fails', normal, compile_and_run, [''])

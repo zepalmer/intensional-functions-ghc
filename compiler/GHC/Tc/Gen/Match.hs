@@ -71,7 +71,8 @@ import GHC.Builtin.Names (bindMName, returnMName)
 import GHC.Utils.Outputable
 import GHC.Utils.Panic
 import GHC.Utils.Misc
-import GHC.Driver.Session ( getDynFlags )
+import GHC.Driver.Session ( getDynFlags, DynFlags )
+import GHC.Driver.Ppr (showPpr)
 
 import GHC.Types.Fixity (LexicalFixity(..))
 import GHC.Types.Name
@@ -325,7 +326,7 @@ tcDoStmts doExpr@(DoExpr _) (L l stmts) res_ty
         ; let expand_do_expr = mkExpandedExpr (HsDo noExtField doExpr (L l stmts))
                                                (unLoc expand_expr)
                                         -- Do expansion on the fly
-        ; traceTc "tcDoStmts" (text "tcExpr:" <+> ppr expand_do_expr)
+        ; traceTc "tcDoStmts do" (text "tcExpr:" <+> ppr expand_do_expr)
         ; tcExpr expand_do_expr res_ty
         }
 
@@ -337,7 +338,7 @@ tcDoStmts mDoExpr@(MDoExpr _) (L l stmts) res_ty
         ; let expand_do_expr = mkExpandedExpr (HsDo noExtField mDoExpr (L l stmts))
                                               (unLoc expand_expr)
                                        -- Do expansion on the fly
-        ; traceTc "tcDoStmts" (text "tcExpr:" <+> ppr expand_do_expr)
+        ; traceTc "tcDoStmts mdo" (text "tcExpr:" <+> ppr expand_do_expr)
         ; tcExpr expand_do_expr res_ty
 
         }
@@ -1220,8 +1221,8 @@ expand_do_stmts do_flavour [L _ (LastStmt _ body _ ret_expr)]
 
 
 expand_do_stmts do_or_lc ((L _ (BindStmt xbsrn pat e)): lstmts)
-  | SyntaxExprRn bind_op        <- xbsrn_bindOp xbsrn
-  , Just (SyntaxExprRn fail_op) <- xbsrn_failOp xbsrn =
+  | SyntaxExprRn bind_op <- xbsrn_bindOp xbsrn
+  , fail_op              <- xbsrn_failOp xbsrn =
 -- the pattern binding x can fail
 --      stmts ~~> stmt'    let f pat = stmts'; f _ = fail ".."
 --    -------------------------------------------------------
@@ -1233,50 +1234,12 @@ expand_do_stmts do_or_lc ((L _ (BindStmt xbsrn pat e)): lstmts)
                                 , expr
                                 ])
 
-  | SyntaxExprRn bind_op <- xbsrn_bindOp xbsrn
-  , Nothing          <- xbsrn_failOp xbsrn = -- irrefutable pattern so no failure
---                      stmts ~~> stmt'
---    ------------------------------------------------
---       x <- e ; stmts   ~~> (Prelude.>>=) e (\ x -> stmts')
-      do expand_stmts <- expand_do_stmts do_or_lc lstmts
-         return $ noLocA (foldl genHsApp bind_op -- (>>=)
-                          [ e
-                          , mkHsLam [pat] expand_stmts  -- (\ x -> stmts')
-                          ])
-
   | otherwise = -- just use the polymorhpic bindop. TODO: Necessary?
       do expand_stmts <- expand_do_stmts do_or_lc lstmts
          return $ noLocA (genHsApps bindMName -- (Prelude.>>=)
                             [ e
                             , mkHsLam [pat] expand_stmts  -- (\ x -> stmts')
                             ])
-
-  where
-    mk_failable_lexpr_tcm :: LPat GhcRn -> LHsExpr GhcRn -> HsExpr GhcRn -> TcM (LHsExpr GhcRn)
-    -- checks the pattern pat and decides if we need to plug in the fail block
-    -- Type checking the pattern is necessary to decide if we need to generate the fail block
-    -- Renamer cannot always determine if a fail block is necessary, and its conservative behaviour would
-    -- generate a fail block even if it is not really needed. cf. GHC.Hs.isIrrefutableHsPat
-    -- Only Tuples are considered irrefutable in the renamer, while newtypes and TyCons with only one datacon
-    -- is not
-    mk_failable_lexpr_tcm pat lexpr fail_op =
-      do { ((tc_pat, _), _) <- tcInferPat (FRRBindStmt DoNotation)
-                               PatBindRhs pat $ return id -- whatever
-         ; dflags <- getDynFlags
-         ; if isIrrefutableHsPat dflags tc_pat
-           then return $ mkHsLam [pat] lexpr
-           else return $ mk_fail_lexpr pat lexpr fail_op
-         }
-    mk_fail_lexpr :: LPat GhcRn -> LHsExpr GhcRn -> HsExpr GhcRn -> LHsExpr GhcRn
-    -- makes the fail block
-    -- TODO: check the discussion around MonadFail.fail type signature.
-    -- Should we really say `mkHsString "fail pattern"`? if yes, maybe a better error message would help
-    mk_fail_lexpr pat lexpr fail_op =
-      noLocA (HsLam noExtField $ mkMatchGroup Generated                 -- let
-               (noLocA [ mkHsCaseAlt pat lexpr                          --   f pat = expr
-                       , mkHsCaseAlt nlWildPatName                      --   f _   = fail "fail pattern"
-                         (noLocA $ genHsApp fail_op
-                           (nlHsLit $ mkHsString "fail pattern")) ]))
 
 expand_do_stmts do_or_lc (L _ (LetStmt _ bnds) : lstmts) =
 --                      stmts ~~> stmts'
@@ -1296,13 +1259,14 @@ expand_do_stmts do_or_lc ((L _ (BodyStmt _ e (SyntaxExprRn f) _)) : lstmts) =
                 [ e               -- e
                 , expand_stmts ]  -- stmts'
 
-expand_do_stmts do_or_lc ((L _ (RecStmt { recS_stmts = rec_stmts
-                                        , recS_later_ids = later_ids  -- forward referenced local ids
-                                        , recS_rec_ids = local_ids     -- ids referenced outside of the rec block
-                                        , recS_mfix_fn = SyntaxExprRn mfix_fun   -- the `mfix` expr
-                                        , recS_ret_fn  = SyntaxExprRn return_fun -- the `return` expr
-                                                                                 -- use it explicitly
-                                                                                 -- at the end of expanded rec block
+expand_do_stmts do_or_lc
+  ((L _ (RecStmt { recS_stmts = rec_stmts
+                 , recS_later_ids = later_ids  -- forward referenced local ids
+                 , recS_rec_ids = local_ids     -- ids referenced outside of the rec block
+                 , recS_mfix_fn = SyntaxExprRn mfix_fun   -- the `mfix` expr
+                 , recS_ret_fn  = SyntaxExprRn return_fun -- the `return` expr
+                                                          -- use it explicitly
+                                                          -- at the end of expanded rec block
                                       }))
                     : lstmts) =
 -- See Note [Typing a RecStmt]
@@ -1320,7 +1284,8 @@ expand_do_stmts do_or_lc ((L _ (RecStmt { recS_stmts = rec_stmts
                                        expand_stmts                       --         stmts')
                       ])
   where
-    local_only_ids = local_ids \\ later_ids -- get unique local rec ids; local rec ids and later ids overlap
+    local_only_ids = local_ids \\ later_ids -- get unique local rec ids;
+                                            --local rec ids and later ids can overlap
     all_ids = local_only_ids ++ later_ids   -- put local ids before return ids
 
     return_stmt  :: ExprLStmt GhcRn
@@ -1336,13 +1301,51 @@ expand_do_stmts do_or_lc ((L _ (RecStmt { recS_stmts = rec_stmts
     mfix_expr    :: LHsExpr GhcRn
     mfix_expr    = mkHsLam [ mkBigLHsVarPatTup all_ids ] $ do_block
 
-expand_do_stmts _ (stmt@(L _ (ApplicativeStmt _ appargs (Just join))):_) =
+expand_do_stmts do_or_lc (stmt@(L _ (ApplicativeStmt _ args mb_join)): lstmts) =
 -- See Note [Applicative BodyStmt]
-  pprPanic "expand_do_stmts: impossible happened ApplicativeStmt" $ ppr stmt
-  
-expand_do_stmts _ (stmt@(L _ (ApplicativeStmt _ appargs Nothing)):_) =
--- See Note [Applicative BodyStmt]
-  pprPanic "expand_do_stmts: impossible happened ApplicativeStmt" $ ppr stmt
+--
+--                  stmts ~~> stmts'
+--   -------------------------------------------------
+--      ; stmts  ~~> (\ x -> stmts') <$> e1 <*> e2 ...
+--
+-- Very similar to HsToCore.Expr.dsDo
+
+-- args are [(<$>, e1), (<*>, e2), .., ]
+-- mb_join is Maybe (join)
+  do { expr' <- expand_do_stmts do_or_lc lstmts
+     ; (pats_can_fail, rhss) <- unzip <$> mapM (do_arg . snd) args
+
+     ; body <- foldrM match_args expr' pats_can_fail -- add blocks for failable patterns
+
+     ; let expand_ado_expr = foldl mk_app_call body (zip (map fst args) rhss)
+     ; traceTc "expand_do_stmts: debug" $ (vcat [ text "stmt:" <+> ppr stmt
+                                                , text "(pats,rhss):" <+> ppr (pats_can_fail, rhss)
+                                                , text "expr':" <+> ppr expr'
+                                                , text "args" <+> ppr args
+                                                , text "final_ado" <+> ppr expand_ado_expr
+                                                ])
+
+
+             -- pprPanic "expand_do_stmts: impossible happened ApplicativeStmt" empty
+     ; case mb_join of
+         Nothing -> return expand_ado_expr
+         Just NoSyntaxExprRn -> return expand_ado_expr -- this is stupid
+         Just (SyntaxExprRn join_op) -> return $ mkHsApp (noLocA join_op) expand_ado_expr
+     }
+  where
+    do_arg :: ApplicativeArg GhcRn -> TcM ((LPat GhcRn, FailOperator GhcRn), LHsExpr GhcRn)
+    do_arg (ApplicativeArgOne mb_fail_op pat expr _) =
+      return ((pat, mb_fail_op), expr)
+    do_arg (ApplicativeArgMany _ stmts ret pat _) =
+      do { expr <- expand_do_stmts do_or_lc $ stmts ++ [noLocA $ mkLastStmt (noLocA ret)]
+         ; return ((pat, Nothing), expr) }
+
+    match_args :: (LPat GhcRn, FailOperator GhcRn) -> LHsExpr GhcRn -> TcM (LHsExpr GhcRn)
+    match_args (pat, fail_op) body = mk_failable_lexpr_tcm pat body fail_op
+
+    mk_app_call l (op, r) = case op of
+                              SyntaxExprRn op -> mkHsApps (noLocA op) [l, r]
+                              NoSyntaxExprRn -> pprPanic "expand_do_stmts: impossible happened first arg" (ppr op)
 
 expand_do_stmts _ (stmt@(L _ (TransStmt {})):_) =
   pprPanic "expand_do_stmts: impossible happened TransStmt" $ ppr stmt
@@ -1354,3 +1357,40 @@ expand_do_stmts _ (stmt@(L _ (ParStmt {})):_) =
 
 
 expand_do_stmts do_flavor stmts = pprPanic "expand_do_stmts: impossible happened" $ (ppr do_flavor $$ ppr stmts)
+
+
+
+mk_failable_lexpr_tcm :: LPat GhcRn -> LHsExpr GhcRn -> FailOperator GhcRn -> TcM (LHsExpr GhcRn)
+-- checks the pattern pat and decides if we need to plug in the fail block
+-- Type checking the pattern is necessary to decide if we need to generate the fail block
+-- Renamer cannot always determine if a fail block is necessary, and its conservative behaviour would
+-- generate a fail block even if it is not really needed. cf. GHC.Hs.isIrrefutableHsPat
+-- Only Tuples are considered irrefutable in the renamer, while newtypes and TyCons with only one datacon
+-- is not
+mk_failable_lexpr_tcm pat lexpr fail_op =
+  do { ((tc_pat, _), _) <- tcInferPat (FRRBindStmt DoNotation)
+                           PatBindRhs pat $ return id -- whatever
+     ; dflags <- getDynFlags
+     ; if isIrrefutableHsPat dflags tc_pat
+       then return $ mkHsLam [pat] lexpr
+       else mk_fail_lexpr pat lexpr fail_op
+     }
+
+-- makes the fail block
+-- TODO: check the discussion around MonadFail.fail type signature.
+-- Should we really say `mkHsString "fail pattern"`? if yes, maybe a better error message would help
+mk_fail_lexpr :: LPat GhcRn -> LHsExpr GhcRn -> FailOperator GhcRn -> TcM (LHsExpr GhcRn)
+mk_fail_lexpr pat lexpr (Just (SyntaxExprRn fail_op)) =
+  do  dflags <- getDynFlags
+      return $ noLocA (HsLam noExtField $ mkMatchGroup Generated   -- \
+                      (noLocA [ mkHsCaseAlt pat lexpr              --   pat -> expr
+                              , mkHsCaseAlt nlWildPatName          --   _   -> fail "fail pattern"
+                                (noLocA $ genHsApp fail_op
+                                 (mk_fail_msg_expr dflags (DoExpr Nothing) pat))
+                              ]))
+mk_fail_lexpr _ _ _ = pprPanic "mk_fail_lexpr: impossible happened" empty
+
+mk_fail_msg_expr :: DynFlags -> HsDoFlavour -> LPat GhcRn -> LHsExpr GhcRn
+mk_fail_msg_expr dflags ctx pat
+  = nlHsLit $ mkHsString $ showPpr dflags $ text "Pattern match failure in" <+> pprHsDoFlavour ctx
+                   <+> text "at" <+> ppr (getLocA pat)

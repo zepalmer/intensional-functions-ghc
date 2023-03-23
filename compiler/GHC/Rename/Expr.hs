@@ -437,8 +437,7 @@ rnExpr (HsDo _ do_or_lc (L l stmts))
           rnStmtsWithFreeVars (HsDoStmt do_or_lc) rnExpr stmts
             (\ _ -> return ((), emptyFVs))
       ; (pp_stmts, fvs2) <- postProcessStmtsForApplicativeDo do_or_lc stmts1
-      ; return (HsDo noExtField do_or_lc (L l pp_stmts), fvs1 `plusFV` fvs2)
-      }
+      ; return ( HsDo noExtField do_or_lc (L l pp_stmts), fvs1 `plusFV` fvs2 ) }
 -- ExplicitList: see Note [Handling overloaded and rebindable constructs]
 rnExpr (ExplicitList _ exps)
   = do  { (exps', fvs) <- rnExprs exps
@@ -1086,10 +1085,8 @@ postProcessStmtsForApplicativeDo ctxt stmts
        ; in_th_bracket <- isBrackStage <$> getStage
        ; if ado_is_on && is_do_expr && not in_th_bracket
             then do { traceRn "ppsfa" (ppr stmts)
-                    ; ado_stmts_and_fvs <- rearrangeForApplicativeDo ctxt stmts
-                    ; return ado_stmts_and_fvs }
-            else do { do_stmts_and_fvs <- noPostProcessStmts (HsDoStmt ctxt) stmts
-                    ; return do_stmts_and_fvs } }
+                    ; rearrangeForApplicativeDo ctxt stmts }
+            else noPostProcessStmts (HsDoStmt ctxt) stmts }
 
 -- | strip the FreeVars annotations from statements
 noPostProcessStmts
@@ -1828,7 +1825,7 @@ independent and do something like this:
      (y,z) <- (,) <$> B x <*> C
      return (f x y z)
 
-But this isn't enough! A and C were also independent, and this
+But this isn't enough! If A and C were also independent, then this
 transformation loses the ability to do A and C in parallel.
 
 The algorithm works by first splitting the sequence of statements into

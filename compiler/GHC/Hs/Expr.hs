@@ -1109,7 +1109,7 @@ instance (Outputable a, Outputable b) => Outputable (HsExpansion a b) where
   ppr (HsExpanded orig expanded)
     -- = ifPprDebug (vcat [ppr orig, braces (text "Expansion:" <+> ppr expanded)])
     --             (ppr orig)
-    = ppr orig <+> braces (text "Expansion:" <+> ppr expanded)
+    = braces (ppr orig) $$ braces (text "Expansion:" <+> ppr expanded)
 
 
 {-
