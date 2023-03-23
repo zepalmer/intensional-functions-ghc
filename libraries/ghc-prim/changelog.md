@@ -14,6 +14,8 @@
     - `sameMutVar#`, `sameTVar#`, `sameMVar#`
     - `sameIOPort#`, `eqStableName#`.
 
+- `keepAlive#` and `touch#` are now polymorphic in its state token (#23163)
+
 ## 0.10.0
 
 - Shipped with GHC 9.6.1
