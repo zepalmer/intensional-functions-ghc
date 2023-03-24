@@ -2,7 +2,6 @@
 -- {-# LANGUAGE MonadComprehensions, RecursiveDo #-}
 module Main where
 
-
 type Id = forall a. a -> a
 
 t :: IO Id
@@ -15,13 +14,6 @@ foo1 = t >>= \x -> return (p x)
 
 foo2 = do { x <- t ; return (p x) }
 
-
-main = do x <- foo2
+main = do x <- foo1
           putStrLn $ show x
           
-
-data D a b = D b b | E a a
-
-fffgg daa = case daa of
-              D b1 b2 -> let
-                x = do 

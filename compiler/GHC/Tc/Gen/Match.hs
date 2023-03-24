@@ -1203,6 +1203,8 @@ checkArgCounts matchContext (MG { mg_alts = L _ (match1:matches) })
 -- ANI Questions: 1. What should be the location information in the expanded expression? Currently the error is displayed on the expanded expr and not on the unexpanded expr
 expand_do_stmts :: HsDoFlavour -> [ExprLStmt GhcRn] -> TcM (LHsExpr GhcRn)
 
+expand_do_stmts _ [] = pprPanic "expand_do_stmts: impossible happened. Empty stmts" empty
+
 expand_do_stmts do_flavour [L _ (LastStmt _ body _ ret_expr)]
   -- last statement of a list comprehension, needs to explicitly return it
   -- See `checkLastStmt` and `Syntax.Expr.StmtLR.LastStmt`
@@ -1226,7 +1228,7 @@ expand_do_stmts do_or_lc ((L _ (BindStmt xbsrn pat e)): lstmts)
 -- the pattern binding x can fail
 --      stmts ~~> stmt'    let f pat = stmts'; f _ = fail ".."
 --    -------------------------------------------------------
---       pat <- e ; stmts   ~~> (Prelude.>>=) e f
+--       pat <- e ; stmts   ~~> (>>=) e f
       do expand_stmts <- expand_do_stmts do_or_lc lstmts
          expr <- mk_failable_lexpr_tcm pat expand_stmts fail_op
          return $ noLocA (foldl genHsApp bind_op -- (>>=)
@@ -1235,7 +1237,11 @@ expand_do_stmts do_or_lc ((L _ (BindStmt xbsrn pat e)): lstmts)
                                 ])
 
   | otherwise = -- just use the polymorhpic bindop. TODO: Necessary?
-      do expand_stmts <- expand_do_stmts do_or_lc lstmts
+--                          stmts ~~> stmts'    
+--    -------------------------------------------------------
+--       pat <- e ; stmts   ~~> (Prelude.>>=) e (\ pat -> stmts')
+      do traceTc "expand_do_stmts: generic binop" empty
+         expand_stmts <- expand_do_stmts do_or_lc lstmts
          return $ noLocA (genHsApps bindMName -- (Prelude.>>=)
                             [ e
                             , mkHsLam [pat] expand_stmts  -- (\ x -> stmts')
@@ -1301,35 +1307,30 @@ expand_do_stmts do_or_lc
     mfix_expr    :: LHsExpr GhcRn
     mfix_expr    = mkHsLam [ mkBigLHsVarPatTup all_ids ] $ do_block
 
-expand_do_stmts do_or_lc (stmt@(L _ (ApplicativeStmt _ args mb_join)): lstmts) =
+expand_do_stmts do_or_lc ((L _ (ApplicativeStmt _ args mb_join)): lstmts) =
 -- See Note [Applicative BodyStmt]
 --
 --                  stmts ~~> stmts'
---   -------------------------------------------------
---      ; stmts  ~~> (\ x -> stmts') <$> e1 <*> e2 ...
+--   -------------------------------------------------------------------------
+--     [(<$>, e1), (<*>, e2)] ; stmts  ~~> (\ x -> stmts') <$> e1 <*> e2 ...
 --
 -- Very similar to HsToCore.Expr.dsDo
 
 -- args are [(<$>, e1), (<*>, e2), .., ]
--- mb_join is Maybe (join)
   do { expr' <- expand_do_stmts do_or_lc lstmts
+     -- extracts pats and arg bodies (rhss) from args
      ; (pats_can_fail, rhss) <- unzip <$> mapM (do_arg . snd) args
 
-     ; body <- foldrM match_args expr' pats_can_fail -- add blocks for failable patterns
+     -- add blocks for failable patterns
+     ; body_with_fails <- foldrM match_args expr' pats_can_fail
 
-     ; let expand_ado_expr = foldl mk_app_call body (zip (map fst args) rhss)
-     ; traceTc "expand_do_stmts: debug" $ (vcat [ text "stmt:" <+> ppr stmt
-                                                , text "(pats,rhss):" <+> ppr (pats_can_fail, rhss)
-                                                , text "expr':" <+> ppr expr'
-                                                , text "args" <+> ppr args
-                                                , text "final_ado" <+> ppr expand_ado_expr
-                                                ])
+     -- builds (body <$> e1 <*> e2 ...)
+     ; let expand_ado_expr = foldl mk_apps body_with_fails (zip (map fst args) rhss)
 
-
-             -- pprPanic "expand_do_stmts: impossible happened ApplicativeStmt" empty
+     -- wrap the expanded expression with a `join` if needed
      ; case mb_join of
          Nothing -> return expand_ado_expr
-         Just NoSyntaxExprRn -> return expand_ado_expr -- this is stupid
+         Just NoSyntaxExprRn -> return expand_ado_expr -- why can this happen?
          Just (SyntaxExprRn join_op) -> return $ mkHsApp (noLocA join_op) expand_ado_expr
      }
   where
@@ -1343,18 +1344,18 @@ expand_do_stmts do_or_lc (stmt@(L _ (ApplicativeStmt _ args mb_join)): lstmts) =
     match_args :: (LPat GhcRn, FailOperator GhcRn) -> LHsExpr GhcRn -> TcM (LHsExpr GhcRn)
     match_args (pat, fail_op) body = mk_failable_lexpr_tcm pat body fail_op
 
-    mk_app_call l (op, r) = case op of
-                              SyntaxExprRn op -> mkHsApps (noLocA op) [l, r]
-                              NoSyntaxExprRn -> pprPanic "expand_do_stmts: impossible happened first arg" (ppr op)
+    mk_apps l (op, r) =
+      case op of
+        SyntaxExprRn op -> mkHsApps (noLocA op) [l, r]
+        NoSyntaxExprRn -> pprPanic "expand_do_stmts op:" (ppr op)
 
 expand_do_stmts _ (stmt@(L _ (TransStmt {})):_) =
-  pprPanic "expand_do_stmts: impossible happened TransStmt" $ ppr stmt
+  pprPanic "expand_do_stmts: TransStmt" $ ppr stmt
 
 expand_do_stmts _ (stmt@(L _ (ParStmt {})):_) =
 -- See See Note [Monad Comprehensions]
 
-  pprPanic "expand_do_stmts: impossible happened ParStmt" $ ppr stmt
-
+  pprPanic "expand_do_stmts: ParStmt" $ ppr stmt
 
 expand_do_stmts do_flavor stmts = pprPanic "expand_do_stmts: impossible happened" $ (ppr do_flavor $$ ppr stmts)
 
