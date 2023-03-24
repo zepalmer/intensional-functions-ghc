@@ -33,6 +33,7 @@ module GHC.Conc.Sync
         (
         -- * Threads
           ThreadId(..)
+        , fromThreadId
         , showThreadId
         , myThreadId
         , killThread
@@ -152,11 +153,18 @@ This misfeature will hopefully be corrected at a later date.
 
 -}
 
+-- | Map a thread to an integer identifier which is unique within the
+-- current process.
+--
+-- @since 4.19.0.0
+fromThreadId :: ThreadId -> Word64
+fromThreadId = fromIntegral . getThreadId . id2TSO
+
 -- | @since 4.2.0.0
 instance Show ThreadId where
    showsPrec d t = showParen (d >= 11) $
         showString "ThreadId " .
-        showsPrec d (getThreadId (id2TSO t))
+        showsPrec d (fromThreadId t)
 
 showThreadId :: ThreadId -> String
 showThreadId = show

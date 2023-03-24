@@ -1,6 +1,8 @@
 # Changelog for [`base` package](http://hackage.haskell.org/package/base)
 
 ## 4.19.0.0 *TBA*
+
+  * `GHC.Conc.Sync` now exports `fromThreadId :: ThreadId -> Word64`, which maps a thread to a per-process-unique identifier ([CLC proposal #117](https://github.com/haskell/core-libraries-committee/issues/117))
   * Add `Data.List.!?` ([CLC proposal #110](https://github.com/haskell/core-libraries-committee/issues/110))
   * `maximumBy`/`minimumBy` are now marked as `INLINE` improving performance for unpackable
     types significantly.
