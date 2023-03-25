@@ -1296,14 +1296,15 @@ expand_do_stmts do_or_lc
 
     return_stmt  :: ExprLStmt GhcRn
     return_stmt  = noLocA $ LastStmt noExtField
-                                     (mkHsApp (noLocA return_fun)
-                                         $ mkBigLHsTup (map nlHsVar all_ids) noExtField)
+                                     (-- mkHsApp (noLocA return_fun)
+                                      --    $ 
+                                      mkBigLHsTup (map nlHsVar all_ids) noExtField)
                                      Nothing
                                      (SyntaxExprRn return_fun)
     do_stmts     :: XRec GhcRn [ExprLStmt GhcRn]
     do_stmts     = noLocA $ (unLoc rec_stmts) ++ [return_stmt]
     do_block     :: LHsExpr GhcRn
-    do_block     = noLocA $ HsDo noExtField (DoExpr Nothing) $ do_stmts
+    do_block     = noLocA $ HsDo noExtField (MDoExpr Nothing) $ do_stmts
     mfix_expr    :: LHsExpr GhcRn
     mfix_expr    = mkHsLam [ mkBigLHsVarPatTup all_ids ] $ do_block
 

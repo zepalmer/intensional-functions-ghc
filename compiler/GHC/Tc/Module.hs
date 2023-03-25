@@ -704,7 +704,7 @@ tcRnHsBootDecls hsc_src decls
                             , hs_defds  = def_decls
                             , hs_ruleds = rule_decls
                             , hs_annds  = _
-                            , hs_valds  = XValBindsLR (NValBinds val_binds val_sigs) })
+                            , hs_valds  = (XValBindsLR (NValBinds val_binds val_sigs) :: HsValBinds GhcRn ) })
               <- rnTopSrcDecls first_group
 
         -- The empty list is for extra dependencies coming from .hs-boot files
@@ -1602,7 +1602,7 @@ tcTopSrcDecls (HsGroup { hs_tyclds = tycl_decls,
                 -- and import the supporting declarations
         traceTc "Tc3" empty ;
         (tcg_env, inst_infos, th_bndrs,
-         XValBindsLR (NValBinds deriv_binds deriv_sigs))
+         (XValBindsLR (NValBinds deriv_binds deriv_sigs) :: HsValBinds GhcRn))
             <- tcTyClsInstDecls tycl_decls deriv_decls val_binds ;
 
         updLclEnv (\tcl_env -> tcl_env { tcl_th_bndrs = th_bndrs `plusNameEnv` tcl_th_bndrs tcl_env }) $
