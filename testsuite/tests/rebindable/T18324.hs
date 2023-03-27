@@ -1,5 +1,5 @@
 {-# LANGUAGE ImpredicativeTypes, DeriveAnyClass #-}
--- {-# LANGUAGE MonadComprehensions, RecursiveDo #-}
+
 module Main where
 
 type Id = forall a. a -> a
@@ -14,6 +14,10 @@ foo1 = t >>= \x -> return (p x)
 
 foo2 = do { x <- t ; return (p x) }
 
+blah x y = return (3::Int)
+
 main = do x <- foo1
           putStrLn $ show x
+
+
           

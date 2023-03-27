@@ -62,16 +62,7 @@ data HsDataDefn pass
 data FamEqn pass rhs
   = FamEqn
        { feqn_tycon  :: LIdP pass
-
--- LIdP (GhcRn) ~~> 
-
        , feqn_rhs    :: rhs }
-
--- type TyFamInstEqn pass = FamEqn pass (LHsType pass)
-
--- data TyFamInstDecl pass
---   = TyFamInstDecl { tfid_eqn :: TyFamInstEqn pass }
-
 
 fffggg :: ClsInstDecl GhcRn -> [Int]
 fffggg ddd = -- let
@@ -86,3 +77,5 @@ fffggg ddd = -- let
     --   TyFamInstDecl { tfid_eqn = FamEqn { feqn_tycon = L l _ } } <- unLoc <$> cid_tyfam_insts ddd
     --   [ 0 ]
     -- in data_fams ++ ty_fams
+
+
