@@ -40,12 +40,10 @@ import GHC.Core.Coercion
 import GHC.Core.TyCon
 import GHC.Core.DataCon
 import GHC.Core.Opt.OccurAnal
-import GHC.Core.TyCo.Rep( UnivCoProvenance(..) )
 
 import GHC.Data.Maybe
 import GHC.Data.OrdList
 import GHC.Data.FastString
-import GHC.Data.Pair
 import GHC.Data.Graph.UnVar
 
 import GHC.Utils.Error
@@ -70,8 +68,7 @@ import GHC.Types.Tickish
 import GHC.Types.TyThing
 import GHC.Types.Unique.Supply
 
-import Data.List        ( unfoldr )
-import Data.Functor.Identity
+import Data.List        ( unfoldr, partition )
 import Control.Monad
 
 {-
@@ -142,10 +139,7 @@ The goal of this pass is to prepare for code generation.
     profiling mode. We have to do this here because we won't have unfoldings
     after this pass (see `trimUnfolding` and Note [Drop unfoldings and rules].
 
-12. Eliminate case clutter in favour of unsafe coercions.
-    See Note [Unsafe coercions]
-
-13. Eliminate some magic Ids, specifically
+12. Eliminate some magic Ids, specifically
      runRW# (\s. e)  ==>  e[readWorldId/s]
              lazy e  ==>  e (see Note [lazyId magic] in GHC.Types.Id.Make)
          noinline e  ==>  e
@@ -156,48 +150,6 @@ The goal of this pass is to prepare for code generation.
 This is all done modulo type applications and abstractions, so that
 when type erasure is done for conversion to STG, we don't end up with
 any trivial or useless bindings.
-
-Note [Unsafe coercions]
-~~~~~~~~~~~~~~~~~~~~~~~
-CorePrep does these two transformations:
-
-1. Convert empty case to cast with an unsafe coercion
-          (case e of {}) ===>  e |> unsafe-co
-   See Note [Empty case alternatives] in GHC.Core: if the case
-   alternatives are empty, the scrutinee must diverge or raise an
-   exception, so we can just dive into it.
-
-   Of course, if the scrutinee *does* return, we may get a seg-fault.
-   A belt-and-braces approach would be to persist empty-alternative
-   cases to code generator, and put a return point anyway that calls a
-   runtime system error function.
-
-   Notice that eliminating empty case can lead to an ill-kinded coercion
-       case error @Int "foo" of {}  :: Int#
-       ===> error @Int "foo" |> unsafe-co
-       where unsafe-co :: Int ~ Int#
-   But that's fine because the expression diverges anyway. And it's
-   no different to what happened before.
-
-2. Eliminate unsafeEqualityProof in favour of an unsafe coercion
-           case unsafeEqualityProof of UnsafeRefl g -> e
-           ===>  e[unsafe-co/g]
-   See (U2) in Note [Implementing unsafeCoerce] in base:Unsafe.Coerce
-
-   Note that this requires us to substitute 'unsafe-co' for 'g', and
-   that is the main (current) reason for cpe_tyco_env in CorePrepEnv.
-   Tiresome, but not difficult.
-
-These transformations get rid of "case clutter", leaving only casts.
-We are doing no further significant transformations, so the reasons
-for the case forms have disappeared. And it is extremely helpful for
-the ANF-ery, CoreToStg, and backends, if trivial expressions really do
-look trivial. #19700 was an example.
-
-In both cases, the "unsafe-co" is just (UnivCo ty1 ty2 (CorePrepProv b)),
-The boolean 'b' says whether the unsafe coercion is supposed to be
-kind-homogeneous (yes for (2), no for (1).  This information is used
-/only/ by Lint.
 
 Note [CorePrep invariants]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -628,11 +580,14 @@ cpeBind top_lvl env (Rec pairs)
                            bndrs1 rhss
 
        ; let (floats_s, rhss1) = unzip stuff
-             all_pairs = foldrOL add_float (bndrs1 `zip` rhss1)
-                                           (concatFloats floats_s)
+             (strs, floats)    = partitionOL isFloatString (concatFloats floats_s)
+             str_floats = mkFloats strs
+             all_pairs = foldrOL add_float (bndrs1 `zip` rhss1) floats
+
+
        -- use env below, so that we reset cpe_rec_ids
        ; return (extendCorePrepEnvList env (bndrs `zip` bndrs1),
-                 unitFloat (FloatLet (Rec all_pairs)),
+                 str_floats `appendFloats` unitFloat (FloatLet (Rec all_pairs)),
                  Nothing) }
 
   | otherwise -- See Note [Join points and floating]
@@ -652,7 +607,8 @@ cpeBind top_lvl env (Rec pairs)
         -- group into a single giant Rec
     add_float (FloatLet (NonRec b r)) prs2 = (b,r) : prs2
     add_float (FloatLet (Rec prs1))   prs2 = prs1 ++ prs2
-    add_float b                       _    = pprPanic "cpeBind" (ppr b)
+    add_float (FloatString r b)       prs2 = (b,r):prs2
+    add_float b                                       _    = pprPanic "cpeBind" (ppr b)
 
 ---------------
 cpePair :: TopLevelFlag -> RecFlag -> Demand -> Bool
@@ -785,10 +741,10 @@ cpeRhsE :: CorePrepEnv -> CoreExpr -> UniqSM (Floats, CpeRhs)
 -- For example
 --      f (g x)   ===>   ([v = g x], f v)
 
-cpeRhsE env (Type ty)
-  = return (emptyFloats, Type (cpSubstTy env ty))
-cpeRhsE env (Coercion co)
-  = return (emptyFloats, Coercion (cpSubstCo env co))
+cpeRhsE _ (Type ty)
+  = return (emptyFloats, Type ty)
+cpeRhsE _ (Coercion co)
+  = return (emptyFloats, Coercion co)
 cpeRhsE env expr@(Lit (LitNumber nt i))
    = case cp_convertNumLit (cpe_config env) nt i of
       Nothing -> return (emptyFloats, expr)
@@ -822,43 +778,13 @@ cpeRhsE env (Tick tickish expr)
 
 cpeRhsE env (Cast expr co)
    = do { (floats, expr') <- cpeRhsE env expr
-        ; return (floats, Cast expr' (cpSubstCo env co)) }
+        ; return (floats, Cast expr' co) }
 
 cpeRhsE env expr@(Lam {})
    = do { let (bndrs,body) = collectBinders expr
         ; (env', bndrs') <- cpCloneBndrs env bndrs
         ; body' <- cpeBodyNF env' body
         ; return (emptyFloats, mkLams bndrs' body') }
-
--- Eliminate empty case
--- See Note [Unsafe coercions]
-cpeRhsE env (Case scrut _ ty [])
-  = do { (floats, scrut') <- cpeRhsE env scrut
-       ; let ty'       = cpSubstTy env ty
-             scrut_ty' = exprType scrut'
-             co'       = mkUnivCo prov Representational scrut_ty' ty'
-             prov      = CorePrepProv False
-               -- False says that the kinds of two types may differ
-               -- E.g. we might cast Int to Int#.  This is fine
-               -- because the scrutinee is guaranteed to diverge
-
-       ; return (floats, Cast scrut' co') }
-   -- This can give rise to
-   --   Warning: Unsafe coercion: between unboxed and boxed value
-   -- but it's fine because 'scrut' diverges
-
--- Eliminate unsafeEqualityProof
--- See Note [Unsafe coercions]
-cpeRhsE env (Case scrut bndr _ alts)
-  | isUnsafeEqualityProof scrut
-  , isDeadBinder bndr -- We can only discard the case if the case-binder
-                      -- is dead.  It usually is, but see #18227
-  , [Alt _ [co_var] rhs] <- alts
-  , let Pair ty1 ty2 = coVarTypes co_var
-        the_co = mkUnivCo prov Nominal (cpSubstTy env ty1) (cpSubstTy env ty2)
-        prov   = CorePrepProv True  -- True <=> kind homogeneous
-        env'   = extendCoVarEnv env co_var the_co
-  = cpeRhsE env' rhs
 
 cpeRhsE env (Case scrut bndr ty alts)
   = do { (floats, scrut') <- cpeBody env scrut
@@ -1205,14 +1131,10 @@ cpeApp top_env expr
             in rebuild_app' env (a : as) tick_fun floats ss rt_ticks req_depth
 
       CpeApp (Type arg_ty)
-        -> rebuild_app' env as (App fun' (Type arg_ty')) floats ss rt_ticks req_depth
-        where
-          arg_ty' = cpSubstTy env arg_ty
+        -> rebuild_app' env as (App fun' (Type arg_ty)) floats ss rt_ticks req_depth
 
       CpeApp (Coercion co)
-        -> rebuild_app' env as (App fun' (Coercion co')) floats (drop 1 ss) rt_ticks req_depth
-        where
-            co' = cpSubstCo env co
+        -> rebuild_app' env as (App fun' (Coercion co)) floats (drop 1 ss) rt_ticks req_depth
 
       CpeApp arg -> do
         let (ss1, ss_rest)  -- See Note [lazyId magic] in GHC.Types.Id.Make
@@ -1224,9 +1146,7 @@ cpeApp top_env expr
         rebuild_app' env as (App fun' arg') (fs `appendFloats` floats) ss_rest rt_ticks (req_depth-1)
 
       CpeCast co
-        -> rebuild_app' env as (Cast fun' co') floats ss rt_ticks req_depth
-        where
-           co' = cpSubstCo env co
+        -> rebuild_app' env as (Cast fun' co) floats ss rt_ticks req_depth
       -- See Note [Ticks and mandatory eta expansion]
       CpeTick tickish
         | tickishPlace tickish == PlaceRuntime
@@ -1478,9 +1398,8 @@ But actually, it doesn't, because "turtle"# is already an HNF. Here is the Cmm:
   Sp = Sp + 8;
   call Control.Exception.Base.petError_info(R2) args: 8, res: 0, upd: 8;
 
-Besides, with -O, FloatOut will already have already floated "turtle"# to the
-top-level, where CSE has a chance to deduplicate strings early (before the
-linker, that is).
+Besides, with -O, FloatOut will have floated "turtle"# to the top-level, where
+CSE has a chance to deduplicate strings early (before the linker, that is).
 -}
 
 -- This is where we arrange that a non-trivial argument is let-bound
@@ -1728,24 +1647,36 @@ where marking recursive DFuns (of undecidable *instances*) strict in dictionary
 -}
 
 data FloatingBind
-  = FloatLet CoreBind    -- Rhs of bindings are CpeRhss
-                         -- They are always of lifted type;
-                         -- unlifted ones are done with FloatCase
+  -- | Rhs of bindings are CpeRhss
+  -- They are always of lifted type;
+  -- unlifted ones are done with FloatCase
+  = FloatLet CoreBind
 
- | FloatCase
-      CpeBody         -- Always ok-for-speculation
-      Id              -- Case binder
-      AltCon [Var]    -- Single alternative
-      Bool            -- Ok-for-speculation; False of a strict,
-                      -- but lifted binding
+  -- | Float a literal string binding.
+  -- INVARIANT: The `CoreExpr` matches `Lit LitString{}`.
+  --            It's just more convenient to keep around the expr than the
+  --            wrapped `ByteString`.
+  -- This is a special case of `FloatCase` that is unconditionally ok-for-spec.
+  -- We want to float out strings quite aggressively because they don't
+  -- allocate.
+  -- See Note [ANF-ising literal string arguments].
+  | FloatString !CoreExpr !Id
 
- -- | See Note [Floating Ticks in CorePrep]
- | FloatTick CoreTickish
+  | FloatCase
+       CpeBody         -- ^ Always ok-for-speculation
+       Id              -- ^ Case binder
+       AltCon [Var]    -- ^ Single alternative
+       Bool            -- ^ Ok-for-speculation; False of a strict,
+                       --   but lifted binding
+
+  -- | See Note [Floating Ticks in CorePrep]
+  | FloatTick CoreTickish
 
 data Floats = Floats OkToSpec (OrdList FloatingBind)
 
 instance Outputable FloatingBind where
   ppr (FloatLet b) = ppr b
+  ppr (FloatString e b) = text "string" <> braces (ppr b <> char '=' <> ppr e)
   ppr (FloatCase r b k bs ok) = text "case" <> braces (ppr ok) <+> ppr r
                                 <+> text "of"<+> ppr b <> text "@"
                                 <> case bs of
@@ -1774,12 +1705,14 @@ data OkToSpec
 
 mkFloat :: CorePrepEnv -> Demand -> Bool -> Id -> CpeRhs -> FloatingBind
 mkFloat env dmd is_unlifted bndr rhs
+  | Lit LitString{} <- rhs = FloatString rhs bndr
+
   | is_strict || ok_for_spec -- See Note [Speculative evaluation]
-  , not is_hnf  = FloatCase rhs bndr DEFAULT [] ok_for_spec
+  , not is_hnf             = FloatCase rhs bndr DEFAULT [] ok_for_spec
     -- Don't make a case for a HNF binding, even if it's strict
     -- Otherwise we get  case (\x -> e) of ...!
 
-  | is_unlifted = FloatCase rhs bndr DEFAULT [] True
+  | is_unlifted            = FloatCase rhs bndr DEFAULT [] True
       -- we used to assertPpr ok_for_spec (ppr rhs) here, but it is now disabled
       -- because exprOkForSpeculation isn't stable under ANF-ing. See for
       -- example #19489 where the following unlifted expression:
@@ -1794,8 +1727,8 @@ mkFloat env dmd is_unlifted bndr rhs
       --
       -- which isn't ok-for-spec because of the let-expression.
 
-  | is_hnf      = FloatLet (NonRec bndr                       rhs)
-  | otherwise   = FloatLet (NonRec (setIdDemandInfo bndr dmd) rhs)
+  | is_hnf                 = FloatLet (NonRec bndr                       rhs)
+  | otherwise              = FloatLet (NonRec (setIdDemandInfo bndr dmd) rhs)
                    -- See Note [Pin demand info on floats]
   where
     is_hnf      = exprIsHNF rhs
@@ -1814,6 +1747,7 @@ wrapBinds (Floats _ binds) body
   = foldrOL mk_bind body binds
   where
     mk_bind (FloatCase rhs bndr con bs _) body = Case rhs bndr (exprType body) [Alt con bs body]
+    mk_bind (FloatString rhs bndr)        body = Case rhs bndr (exprType body) [Alt DEFAULT [] body]
     mk_bind (FloatLet bind)               body = Let bind body
     mk_bind (FloatTick tickish)           body = mkTick tickish body
 
@@ -1821,18 +1755,21 @@ addFloat :: Floats -> FloatingBind -> Floats
 addFloat (Floats ok_to_spec floats) new_float
   = Floats (combine ok_to_spec (check new_float)) (floats `snocOL` new_float)
   where
-    check (FloatLet {})        = OkToSpec
-    check (FloatCase rhs _ _ _ ok_for_spec)
-      | Lit LitString{} <- rhs = OkToSpec
-      | ok_for_spec            = IfUnliftedOk
-      | otherwise              = NotOkToSpec
-    check FloatTick{}          = OkToSpec
+    check FloatLet {}   = OkToSpec
+    check FloatTick{}   = OkToSpec
+    check FloatString{} = OkToSpec
+    check (FloatCase _ _ _ _ ok_for_spec)
+      | ok_for_spec     = IfUnliftedOk
+      | otherwise       = NotOkToSpec
         -- The ok-for-speculation flag says that it's safe to
         -- float this Case out of a let, and thereby do it more eagerly
         -- We need the IfUnliftedOk flag because it's never ok to float
         -- an unlifted binding to the top level.
         -- There is one exception: String literals! Hence we keep OkToSpec
         -- See Note [ANF-ising literal string arguments]
+
+mkFloats :: Foldable f => f FloatingBind -> Floats
+mkFloats = foldr (flip addFloat) emptyFloats
 
 unitFloat :: FloatingBind -> Floats
 unitFloat = addFloat emptyFloats
@@ -1843,6 +1780,11 @@ appendFloats (Floats spec1 floats1) (Floats spec2 floats2)
 
 concatFloats :: [Floats] -> OrdList FloatingBind
 concatFloats = foldr (\ (Floats _ bs1) bs2 -> appOL bs1 bs2) nilOL
+
+partitionOL :: (a -> Bool) -> OrdList a -> (OrdList a, OrdList a)
+partitionOL p ol = (toOL l, toOL r)
+  where
+    (!l, !r) = partition p (fromOL ol)
 
 combine :: OkToSpec -> OkToSpec -> OkToSpec
 combine NotOkToSpec _  = NotOkToSpec
@@ -1857,6 +1799,7 @@ deFloatTop (Floats _ floats)
   = foldrOL get [] floats
   where
     get (FloatLet b)               bs = get_bind b                 : bs
+    get (FloatString body var)     bs = get_bind (NonRec var body) : bs
     get (FloatCase body var _ _ _) bs = get_bind (NonRec var body) : bs
     get b _ = pprPanic "corePrepPgm" (ppr b)
 
@@ -1882,7 +1825,7 @@ canFloat (Floats ok_to_spec fs) rhs
     go fbs_out (fb@(FloatLet _) : fbs_in)
       = go (fbs_out `snocOL` fb) fbs_in
 
-    go fbs_out (fb@(FloatCase (Lit LitString{}) _ _ _ _) : fbs_in)
+    go fbs_out (fb@FloatString{} : fbs_in)
       -- See Note [ANF-ising literal string arguments]
       = go (fbs_out `snocOL` fb) fbs_in
 
@@ -1902,18 +1845,20 @@ wantFloatNested is_rec dmd rhs_is_unlifted floats rhs
         -- we don't want to float the case, even if f has arity 2,
         -- because floating the case would make it evaluated too early.
   where
-    worth_floating (Floats _ fs) rhs = exprIsHNF rhs || all is_lit_string fs
+    worth_floating (Floats _ fs) rhs = exprIsHNF rhs || all isFloatString fs
       -- Only float out of a RHS that becomes a NF in doing so. Otherwise we
       -- potentially make 2 thunks (e.g., `[let t = g x, let u = f t]`) where we
       -- had a single nested one before (e.g., `[let u = let t = g x in f t]`.
       -- We relax when it's a LitString that we float out, because that doesn't
       -- allocate. See Note [ANF-ising literal string arguments]
-      -- The LitString check is a bit crude, because wantFloatNested is
+      -- The FloatString check is a bit crude, because wantFloatNested is
       -- all-or-nothing. We might want to refactor to something more like
       -- FloatOut.partitionByLevel for selective floating, but compiler perf
       -- implications are unclear.
-    is_lit_string (FloatCase (Lit LitString{}) _ _ _ _) = True
-    is_lit_string _                                     = False
+
+isFloatString :: FloatingBind -> Bool
+isFloatString FloatString{} = True
+isFloatString _             = False
 
 allLazyTop :: Floats -> Bool
 allLazyTop (Floats OkToSpec _) = True
@@ -2030,8 +1975,6 @@ data CorePrepEnv
         --      see Note [lazyId magic], Note [Inlining in CorePrep]
         --      and Note [CorePrep inlines trivial CoreExpr not Id] (#12076)
 
-        , cpe_tyco_env :: Maybe CpeTyCoEnv -- See Note [CpeTyCoEnv]
-
         , cpe_rec_ids         :: UnVarSet -- Faster OutIdSet; See Note [Speculative evaluation]
     }
 
@@ -2039,7 +1982,6 @@ mkInitialCorePrepEnv :: CorePrepConfig -> CorePrepEnv
 mkInitialCorePrepEnv cfg = CPE
       { cpe_config        = cfg
       , cpe_env           = emptyVarEnv
-      , cpe_tyco_env      = Nothing
       , cpe_rec_ids       = emptyUnVarSet
       }
 
@@ -2067,117 +2009,6 @@ enterRecGroupRHSs env grp
   = env { cpe_rec_ids = extendUnVarSetList grp (cpe_rec_ids env) }
 
 ------------------------------------------------------------------------------
---           CpeTyCoEnv
--- ---------------------------------------------------------------------------
-
-{- Note [CpeTyCoEnv]
-~~~~~~~~~~~~~~~~~~~~
-The cpe_tyco_env :: Maybe CpeTyCoEnv field carries a substitution
-for type and coercion variables
-
-* We need the coercion substitution to support the elimination of
-  unsafeEqualityProof (see Note [Unsafe coercions])
-
-* We need the type substitution in case one of those unsafe
-  coercions occurs in the kind of tyvar binder (sigh)
-
-We don't need an in-scope set because we don't clone any of these
-binders at all, so no new capture can take place.
-
-The cpe_tyco_env is almost always empty -- it only gets populated
-when we get under an usafeEqualityProof.  Hence the Maybe CpeTyCoEnv,
-which makes everything into a no-op in the common case.
--}
-
-data CpeTyCoEnv = TCE TvSubstEnv CvSubstEnv
-
-emptyTCE :: CpeTyCoEnv
-emptyTCE = TCE emptyTvSubstEnv emptyCvSubstEnv
-
-extend_tce_cv :: CpeTyCoEnv -> CoVar -> Coercion -> CpeTyCoEnv
-extend_tce_cv (TCE tv_env cv_env) cv co
-  = TCE tv_env (extendVarEnv cv_env cv co)
-
-extend_tce_tv :: CpeTyCoEnv -> TyVar -> Type -> CpeTyCoEnv
-extend_tce_tv (TCE tv_env cv_env) tv ty
-  = TCE (extendVarEnv tv_env tv ty) cv_env
-
-lookup_tce_cv :: CpeTyCoEnv -> CoVar -> Coercion
-lookup_tce_cv (TCE _ cv_env) cv
-  = case lookupVarEnv cv_env cv of
-        Just co -> co
-        Nothing -> mkCoVarCo cv
-
-lookup_tce_tv :: CpeTyCoEnv -> TyVar -> Type
-lookup_tce_tv (TCE tv_env _) tv
-  = case lookupVarEnv tv_env tv of
-        Just ty -> ty
-        Nothing -> mkTyVarTy tv
-
-extendCoVarEnv :: CorePrepEnv -> CoVar -> Coercion -> CorePrepEnv
-extendCoVarEnv cpe@(CPE { cpe_tyco_env = mb_tce }) cv co
-  = cpe { cpe_tyco_env = Just (extend_tce_cv tce cv co) }
-  where
-    tce = mb_tce `orElse` emptyTCE
-
-
-cpSubstTy :: CorePrepEnv -> Type -> Type
-cpSubstTy (CPE { cpe_tyco_env = mb_env }) ty
-  = case mb_env of
-      Just env -> runIdentity (subst_ty env ty)
-      Nothing  -> ty
-
-cpSubstCo :: CorePrepEnv -> Coercion -> Coercion
-cpSubstCo (CPE { cpe_tyco_env = mb_env }) co
-  = case mb_env of
-      Just tce -> runIdentity (subst_co tce co)
-      Nothing  -> co
-
-subst_tyco_mapper :: TyCoMapper CpeTyCoEnv Identity
-subst_tyco_mapper = TyCoMapper
-  { tcm_tyvar      = \env tv -> return (lookup_tce_tv env tv)
-  , tcm_covar      = \env cv -> return (lookup_tce_cv env cv)
-  , tcm_hole       = \_ hole -> pprPanic "subst_co_mapper:hole" (ppr hole)
-  , tcm_tycobinder = \env tcv _vis -> if isTyVar tcv
-                                      then return (subst_tv_bndr env tcv)
-                                      else return (subst_cv_bndr env tcv)
-  , tcm_tycon      = \tc -> return tc }
-
-subst_ty :: CpeTyCoEnv -> Type     -> Identity Type
-subst_co :: CpeTyCoEnv -> Coercion -> Identity Coercion
-(subst_ty, _, subst_co, _) = mapTyCoX subst_tyco_mapper
-
-cpSubstTyVarBndr :: CorePrepEnv -> TyVar -> (CorePrepEnv, TyVar)
-cpSubstTyVarBndr env@(CPE { cpe_tyco_env = mb_env }) tv
-  = case mb_env of
-      Nothing  -> (env, tv)
-      Just tce -> (env { cpe_tyco_env = Just tce' }, tv')
-               where
-                  (tce', tv') = subst_tv_bndr tce tv
-
-subst_tv_bndr :: CpeTyCoEnv -> TyVar -> (CpeTyCoEnv, TyVar)
-subst_tv_bndr tce tv
-  = (extend_tce_tv tce tv (mkTyVarTy tv'), tv')
-  where
-    tv'   = mkTyVar (tyVarName tv) kind'
-    kind' = runIdentity $ subst_ty tce $ tyVarKind tv
-
-cpSubstCoVarBndr :: CorePrepEnv -> CoVar -> (CorePrepEnv, CoVar)
-cpSubstCoVarBndr env@(CPE { cpe_tyco_env = mb_env }) cv
-  = case mb_env of
-      Nothing  -> (env, cv)
-      Just tce -> (env { cpe_tyco_env = Just tce' }, cv')
-               where
-                  (tce', cv') = subst_cv_bndr tce cv
-
-subst_cv_bndr :: CpeTyCoEnv -> CoVar -> (CpeTyCoEnv, CoVar)
-subst_cv_bndr tce cv
-  = (extend_tce_cv tce cv (mkCoVarCo cv'), cv')
-  where
-    cv' = mkCoVar (varName cv) ty'
-    ty' = runIdentity (subst_ty tce $ varType cv)
-
-------------------------------------------------------------------------------
 -- Cloning binders
 -- ---------------------------------------------------------------------------
 
@@ -2186,12 +2017,8 @@ cpCloneBndrs env bs = mapAccumLM cpCloneBndr env bs
 
 cpCloneBndr  :: CorePrepEnv -> InVar -> UniqSM (CorePrepEnv, OutVar)
 cpCloneBndr env bndr
-  | isTyVar bndr
-  = return (cpSubstTyVarBndr env bndr)
-
-  | isCoVar bndr
-  = return (cpSubstCoVarBndr env bndr)
-
+  | isTyCoVar bndr
+  = return (env, bndr)
   | otherwise
   = do { bndr' <- clone_it bndr
 
@@ -2211,8 +2038,7 @@ cpCloneBndr env bndr
     clone_it bndr
       | isLocalId bndr
       = do { uniq <- getUniqueM
-           ; let ty' = cpSubstTy env (idType bndr)
-           ; return (setVarUnique (setIdType bndr ty') uniq) }
+           ; return (setVarUnique bndr uniq) }
 
       | otherwise   -- Top level things, which we don't want
                     -- to clone, have become GlobalIds by now
