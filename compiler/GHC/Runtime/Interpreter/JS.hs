@@ -10,9 +10,15 @@
 -- ghc-interp.js is a simple JS script used to bootstrap the external
 -- interpreter server (iserv) that is written in Haskell. This script waits for
 -- commands on stdin:
---      LOAD foo.js -- load a JS file in the current JS environment
---      RUN_SERVER  -- execute h$main(h$ghciZCGHCiziServerzidefaultServer)
---                     (entry point of the interpreter server)
+--
+--      LOAD foo.js
+--
+--        load a JS file in the current JS environment
+--
+--      RUN_SERVER ghci_unit_id
+--
+--        execute h$main(h$ghci_unit_idZCGHCiziServerzidefaultServer),
+--        the entry point of the interpreter server
 --
 -- On the GHC side, when we need the interpreter we do the following:
 --
