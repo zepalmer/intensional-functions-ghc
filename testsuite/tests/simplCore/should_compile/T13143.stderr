@@ -88,7 +88,7 @@ T13143.$wg
         True ->
           case ds1 of {
             False -> T13143.$wg GHC.Types.True GHC.Types.True ww;
-            True -> case lvl of wild2 { }
+            True -> case lvl of {}
           }
       }
 end Rec }
