@@ -421,6 +421,75 @@ instance (IntensionalFunctionMultiApplication
                     NonEmptyHListCons arg2 $
                         NonEmptyHListSingleton arg3)
 
+type instance IntensionalFunctionMultiApplicationOverloadArgumentMap
+        (t1,t2,t3,t4) =
+    'NonEmptyListCons t1
+        ('NonEmptyListCons t2
+            ('NonEmptyListCons t3
+                ('NonEmptyListSingleton t4)))
+instance (IntensionalFunctionMultiApplication
+            cfn
+            inputs
+            output
+            (IntensionalFunctionMultiApplicationOverloadArgumentMap
+                (t1,t2,t3,t4))
+            saturation)
+    => IntensionalFunctionMultiApplicationOverload
+            cfn inputs output (t1,t2,t3,t4) saturation where
+    (%@%) fn (arg1,arg2,arg3,arg4) =
+        (%@+) fn (NonEmptyHListCons arg1 $
+                    NonEmptyHListCons arg2 $
+                        NonEmptyHListCons arg3 $
+                            NonEmptyHListSingleton arg4)
+
+type instance IntensionalFunctionMultiApplicationOverloadArgumentMap
+        (t1,t2,t3,t4,t5) =
+    'NonEmptyListCons t1
+        ('NonEmptyListCons t2
+            ('NonEmptyListCons t3
+                ('NonEmptyListCons t4
+                    ('NonEmptyListSingleton t5))))
+instance (IntensionalFunctionMultiApplication
+            cfn
+            inputs
+            output
+            (IntensionalFunctionMultiApplicationOverloadArgumentMap
+                (t1,t2,t3,t4,t5))
+            saturation)
+    => IntensionalFunctionMultiApplicationOverload
+            cfn inputs output (t1,t2,t3,t4,t5) saturation where
+    (%@%) fn (arg1,arg2,arg3,arg4,arg5) =
+        (%@+) fn (NonEmptyHListCons arg1 $
+                    NonEmptyHListCons arg2 $
+                        NonEmptyHListCons arg3 $
+                            NonEmptyHListCons arg4 $
+                                NonEmptyHListSingleton arg5)
+
+type instance IntensionalFunctionMultiApplicationOverloadArgumentMap
+        (t1,t2,t3,t4,t5,t6) =
+    'NonEmptyListCons t1
+        ('NonEmptyListCons t2
+            ('NonEmptyListCons t3
+                ('NonEmptyListCons t4
+                    ('NonEmptyListCons t5
+                        ('NonEmptyListSingleton t6)))))
+instance (IntensionalFunctionMultiApplication
+            cfn
+            inputs
+            output
+            (IntensionalFunctionMultiApplicationOverloadArgumentMap
+                (t1,t2,t3,t4,t5,t6))
+            saturation)
+    => IntensionalFunctionMultiApplicationOverload
+            cfn inputs output (t1,t2,t3,t4,t5,t6) saturation where
+    (%@%) fn (arg1,arg2,arg3,arg4,arg5,arg6) =
+        (%@+) fn (NonEmptyHListCons arg1 $
+                    NonEmptyHListCons arg2 $
+                        NonEmptyHListCons arg3 $
+                            NonEmptyHListCons arg4 $
+                                NonEmptyHListCons arg5 $
+                                    NonEmptyHListSingleton arg6)
+
 {-
 TODO: an operator that takes
   '[x,y,...] ->%%c r

@@ -37,7 +37,7 @@ itsThen :: forall c m a b.
            , c ~ IntensionalFunctorCF m
            , IntensionalMonadBindC m a b
            , Typeable a, Typeable b
-           , c (m b)
+           , c (m b)   -- This constraint is required due to \%c _ -> b    :(
            )
         => '[m a, m b] ->%%c m b
 itsThen = \%%c a b ->
