@@ -43,7 +43,9 @@ import System.IO.Error
 
 import GHC.Base
 import GHC.Num
+#if defined(mingw32_HOST_OS)
 import GHC.OldList (elem)
+#endif
 import GHC.Ptr
 import GHC.Real
 import GHC.IO
