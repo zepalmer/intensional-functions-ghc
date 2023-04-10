@@ -2903,6 +2903,17 @@ data TcRnMessage where
     -> Maybe LangExt.Extension
     -> TcRnMessage
 
+  {-| A do statment that discards a non-unit value
+      Example: do return 10  -- value discarded
+                  return 10
+
+      Test cases: testsuite/tests/deSugar/should_compile/T3263-2
+
+  -}
+  TcRnUnUsedDoBind
+    :: Type
+    -> TcRnMessage
+    
   {-| TcRnIllegalTupleSection is an error triggered by usage of a tuple section
       without enabling the TupleSections extension.
 

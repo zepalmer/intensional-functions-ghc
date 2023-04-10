@@ -42,7 +42,7 @@ import {-# SOURCE #-}   GHC.Tc.Gen.Expr( tcSyntaxOp, tcInferRho, tcInferRhoNC
                                        , tcCheckMonoExpr, tcCheckMonoExprNC
                                        , tcCheckPolyExpr )
 
-import GHC.Rename.Utils ( bindLocalNames, genHsApp, genHsApps, genHsVar )
+import GHC.Rename.Utils ( bindLocalNames, genHsApp, genLHsVar, wrapGenSpan )
 import GHC.Tc.Errors.Types
 import GHC.Tc.Utils.Monad
 import GHC.Tc.Utils.Env
@@ -59,7 +59,7 @@ import GHC.Tc.Types.Evidence
 import GHC.Core.Multiplicity
 import GHC.Core.UsageEnv
 import GHC.Core.TyCon
--- Create chunkified tuple tybes for monad comprehensions
+-- Create chunkified tuple types for monad comprehensions
 import GHC.Core.Make
 
 import GHC.Hs
@@ -1200,12 +1200,13 @@ checkArgCounts matchContext (MG { mg_alts = L _ (match1:matches) })
 -}
 -- | Expand the Do statments so that it works fine with Quicklook
 --   See Note[Rebindable Do and Expanding Statements]
--- ANI Questions: 1. What should be the location information in the expanded expression? Currently the error is displayed on the expanded expr and not on the unexpanded expr
+-- ANI Questions: 1. What should be the location information in the expanded expression?
+-- Currently the error is displayed on the expanded expr and not on the unexpanded expr
 expand_do_stmts :: HsDoFlavour -> [ExprLStmt GhcRn] -> TcM (LHsExpr GhcRn)
 expand_do_stmts ListComp _ = pprPanic "expand_do_stmts: impossible happened. ListComp" empty
 expand_do_stmts _ [] = pprPanic "expand_do_stmts: impossible happened. Empty stmts" empty
 
-expand_do_stmts _ [L l (LastStmt _ body _ ret_expr)]
+expand_do_stmts _ [L _ (LastStmt _ body _ ret_expr)]
   -- last statement of a list comprehension, needs to explicitly return it
   -- See `checkLastStmt` and `Syntax.Expr.StmtLR.LastStmt`
   -- TODO: i don't think we need this if we never call from a ListComp
@@ -1219,10 +1220,10 @@ expand_do_stmts _ [L l (LastStmt _ body _ ret_expr)]
    --    ------------------------------------------------
    --               return e  ~~> return e
    -- to make T18324 work
-   = return $ mkHsApp (L l ret) body
+   = return $ wrapGenSpan $ genHsApp ret body
 
 
-expand_do_stmts do_or_lc ((L l (BindStmt xbsrn pat e)): lstmts)
+expand_do_stmts do_or_lc ((L _ (BindStmt xbsrn pat e)): lstmts)
   | SyntaxExprRn bind_op <- xbsrn_bindOp xbsrn
   , fail_op              <- xbsrn_failOp xbsrn =
 -- the pattern binding x can fail
@@ -1231,42 +1232,42 @@ expand_do_stmts do_or_lc ((L l (BindStmt xbsrn pat e)): lstmts)
 --       pat <- e ; stmts   ~~> (>>=) e f
       do expand_stmts <- expand_do_stmts do_or_lc lstmts
          expr <- mk_failable_lexpr_tcm pat expand_stmts fail_op
-         return $ mkHsApps (L l bind_op)-- (>>=)
+         return $ mkHsApps (wrapGenSpan bind_op)-- (>>=)
                                 [ e
                                 , expr
                                 ]
 
-  | otherwise = -- just use the polymorhpic bindop. TODO: Necessary?
+  | otherwise = -- just use the Prelude.>>= TODO: Necessary?
 --                          stmts ~~> stmts'    
 --    -------------------------------------------------------
 --       pat <- e ; stmts   ~~> (Prelude.>>=) e (\ pat -> stmts')
       do traceTc "expand_do_stmts: generic binop" empty
          expand_stmts <- expand_do_stmts do_or_lc lstmts
-         return $ L l (genHsApps bindMName -- (Prelude.>>=)
+         return $ mkHsApps  (genLHsVar bindMName) -- (Prelude.>>=)
                             [ e
                             , mkHsLam [pat] expand_stmts  -- (\ x -> stmts')
-                            ])
+                            ]
 
-expand_do_stmts do_or_lc (L l (LetStmt _ bnds) : lstmts) =
+expand_do_stmts do_or_lc (L _ (LetStmt _ bnds) : lstmts) =
 --                      stmts ~~> stmts'
 --    ------------------------------------------------
 --       let x = e ; stmts ~~> let x = e in stmts'
   do expand_stmts <- expand_do_stmts do_or_lc lstmts
-     return $ L l (HsLet noExtField noHsTok bnds noHsTok (expand_stmts))
+     return $ wrapGenSpan (HsLet noExtField noHsTok bnds noHsTok (expand_stmts))
 
 
-expand_do_stmts do_or_lc ((L l (BodyStmt _ e (SyntaxExprRn f) _)) : lstmts) =
+expand_do_stmts do_or_lc ((L _ (BodyStmt _ e (SyntaxExprRn f) _)) : lstmts) =
 -- See Note [BodyStmt]
 --              stmts ~~> stmts'
 --    ----------------------------------------------
 --      e ; stmts ~~> (>>) e stmts'
   do expand_stmts <- expand_do_stmts do_or_lc lstmts
-     return $ mkHsApps (L l f) -- (>>)
+     return $ mkHsApps (wrapGenSpan f) -- (>>)
                 [ e               -- e
                 , expand_stmts ]  -- stmts'
 
 expand_do_stmts do_or_lc
-  ((L l (RecStmt { recS_stmts = rec_stmts
+  ((L _ (RecStmt { recS_stmts = rec_stmts
                  , recS_later_ids = later_ids  -- forward referenced local ids
                  , recS_rec_ids = local_ids     -- ids referenced outside of the rec block
                  , recS_mfix_fn = SyntaxExprRn mfix_fun   -- the `mfix` expr
@@ -1284,8 +1285,8 @@ expand_do_stmts do_or_lc
 --                                                 ; return (local_only_ids ++ later_ids) } ))
 --                              (\ [ local_only_ids ++ later_ids ] -> stmts')
   do expand_stmts <- expand_do_stmts do_or_lc lstmts
-     return $ (mkHsApps (L l (genHsVar bindMName))                            -- (Prelude.>>=)
-                      [ (L l mfix_fun) `mkHsApp` mfix_expr             -- (mfix (do block))
+     return $ (mkHsApps (genLHsVar bindMName)                            -- (Prelude.>>=)
+                      [ (wrapGenSpan mfix_fun) `mkHsApp` mfix_expr             -- (mfix (do block))
                       , mkHsLam [ mkBigLHsVarPatTup all_ids ]             --        (\ x ->
                                        expand_stmts                       --         stmts')
                       ])
@@ -1300,15 +1301,15 @@ expand_do_stmts do_or_lc
                                      Nothing
                                      (SyntaxExprRn return_fun)
     do_stmts     :: XRec GhcRn [ExprLStmt GhcRn]
-    do_stmts     = noLocA $ (unLoc rec_stmts) ++ [return_stmt]
+    do_stmts     = wrapGenSpan $ (unLoc rec_stmts) ++ [return_stmt]
     do_block     :: LHsExpr GhcRn
-    do_block     = L l $ HsDo noExtField (DoExpr Nothing) $ do_stmts
+    do_block     = wrapGenSpan $ HsDo noExtField (DoExpr Nothing) $ do_stmts
     mfix_expr    :: LHsExpr GhcRn
-    mfix_expr    = mkHsLam [ L l (LazyPat noExtField $ mkBigLHsVarPatTup all_ids) ] $ do_block
+    mfix_expr    = mkHsLam [ wrapGenSpan (LazyPat noExtField $ mkBigLHsVarPatTup all_ids) ] $ do_block
                              -- LazyPat becuase we do not want to eagerly evaluate the pattern
                              -- and potentially loop forever
 
-expand_do_stmts do_or_lc ((L l (ApplicativeStmt _ args mb_join)): lstmts) =
+expand_do_stmts do_or_lc ((L _ (ApplicativeStmt _ args mb_join)): lstmts) =
 -- See Note [Applicative BodyStmt]
 --
 --                  stmts ~~> stmts'
@@ -1339,7 +1340,7 @@ expand_do_stmts do_or_lc ((L l (ApplicativeStmt _ args mb_join)): lstmts) =
     do_arg (ApplicativeArgOne mb_fail_op pat expr _) =
       return ((pat, mb_fail_op), expr)
     do_arg (ApplicativeArgMany _ stmts ret pat _) =
-      do { expr <- expand_do_stmts do_or_lc $ stmts ++ [noLocA $ mkLastStmt (L l ret)]
+      do { expr <- expand_do_stmts do_or_lc $ stmts ++ [noLocA $ mkLastStmt (wrapGenSpan ret)]
          ; return ((pat, Nothing), expr) }
 
     match_args :: (LPat GhcRn, FailOperator GhcRn) -> LHsExpr GhcRn -> TcM (LHsExpr GhcRn)
@@ -1363,9 +1364,9 @@ expand_do_stmts do_flavor stmts = pprPanic "expand_do_stmts: impossible happened
 
 
 mk_failable_lexpr_tcm :: LPat GhcRn -> LHsExpr GhcRn -> FailOperator GhcRn -> TcM (LHsExpr GhcRn)
--- checks the pattern pat and decides if we need to plug in the fail block
+-- checks the pattern `pat` and decides if we need to decorate it with a fail block
 -- Type checking the pattern is necessary to decide if we need to generate the fail block
--- Renamer cannot always determine if a fail block is necessary, and its conservative behaviour would
+-- The Renamer cannot always determine if a fail block is necessary, and its conservative behaviour would
 -- generate a fail block even if it is not really needed. This would fail typechecking as
 -- a monad fail instance for such datatypes maynot be defined. cf. GHC.Hs.isIrrefutableHsPat
 mk_failable_lexpr_tcm pat lexpr fail_op =

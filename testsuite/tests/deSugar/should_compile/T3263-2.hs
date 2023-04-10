@@ -31,8 +31,18 @@ t5 = do
   _ <- return (return 10 :: m Int)
   return 10
 
+
 -- Warning
 t6 :: forall m. MonadFix m => m Int
 t6 = mdo
   return (return 10 :: m Int)
+  return 10
+
+-- unit :: ()
+unit = ()
+
+-- No warning
+t7 :: forall m. Monad m => m Int
+t7 = do
+  return unit
   return 10
