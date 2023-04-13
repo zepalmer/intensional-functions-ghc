@@ -149,6 +149,7 @@ GHC.JS.Make
 GHC.JS.Ppr
 GHC.JS.Syntax
 GHC.JS.Transform
+GHC.JS.Unsat.Syntax
 GHC.Linker.Static.Utils
 GHC.Linker.Types
 GHC.Parser.Annotation
