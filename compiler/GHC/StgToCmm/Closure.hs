@@ -22,7 +22,7 @@ module GHC.StgToCmm.Closure (
         argPrimRep,
 
         NonVoid(..), fromNonVoid, nonVoidIds, nonVoidStgArgs,
-        assertNonVoidIds, assertNonVoidStgArgs,
+        assertNonVoidIds, assertNonVoidStgArgs, hasNoNonZeroWidthArgs,
 
         -- * LambdaFormInfo
         LambdaFormInfo,         -- Abstract
@@ -170,6 +170,12 @@ assertNonVoidStgArgs :: [StgArg] -> [NonVoid StgArg]
 assertNonVoidStgArgs args = assert (not (any (isZeroBitTy . stgArgType) args)) $
                             coerce args
 
+-- | Returns whether there are any arguments with a non-zero-width runtime
+-- representation.
+--
+-- Returns True if the datacon has no or /just/ zero-width arguments.
+hasNoNonZeroWidthArgs :: DataCon -> Bool
+hasNoNonZeroWidthArgs = all (isZeroBitTy . scaledThing) . dataConRepArgTys
 
 -----------------------------------------------------------------------------
 --                Representations
