@@ -14,14 +14,14 @@ t2 :: Monad m => m (m Int)
 t2 = return (return 10)
 
 -- No warning
-t3 :: Monad m => m (m Int)
-t3 = do
+asdft3 :: Monad m => m (m Int)
+asdft3 = do
   return 10
   return (return 10)
 
 -- Warning
-t4 :: forall m. Monad m => m Int
-t4 = do
+asdft4 :: forall m. Monad m => m Int
+asdft4 = do
   return (return 10 :: m Int)
   return 10
 
@@ -38,11 +38,15 @@ t6 = mdo
   return (return 10 :: m Int)
   return 10
 
--- unit :: ()
+unit :: ()
 unit = ()
 
--- No warning
+-- -- No warning
 t7 :: forall m. Monad m => m Int
 t7 = do
   return unit
   return 10
+
+-- No warning
+t8 :: Monad m => m Int
+t8 = return 10 >> return 10

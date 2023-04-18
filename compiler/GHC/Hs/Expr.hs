@@ -2011,13 +2011,6 @@ matchDoContextErrString (MDoExpr m)  = prependQualified m (text "'mdo' block")
 matchDoContextErrString ListComp     = text "list comprehension"
 matchDoContextErrString MonadComp    = text "monad comprehension"
 
-instance Outputable HsDoFlavour where
-  ppr (DoExpr m) = text "DoExpr" <+> parens (ppr m)
-  ppr (MDoExpr m) = text "MDoExpr" <+> parens (ppr m)
-  ppr GhciStmtCtxt = text "GhciStmtCtxt"
-  ppr ListComp = text "ListComp"
-  ppr MonadComp = text "MonadComp"
-
 pprMatchInCtxt :: (OutputableBndrId idR, Outputable body)
                => Match (GhcPass idR) body -> SDoc
 pprMatchInCtxt match  = hang (text "In" <+> pprMatchContext (m_ctxt match)

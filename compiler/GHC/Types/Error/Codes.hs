@@ -430,12 +430,15 @@ type family GhcDiagnosticCode c = n | n -> c where
   GhcDiagnosticCode "TcRnIllegalStaticFormInSplice"                 = 12219
   GhcDiagnosticCode "TcRnListComprehensionDuplicateBinding"         = 81232
   GhcDiagnosticCode "TcRnLastStmtNotExpr"                           = 55814
-  GhcDiagnosticCode "TcRnUnUsedDoBind"                              = 61315
   GhcDiagnosticCode "TcRnUnexpectedStatementInContext"              = 42026
   GhcDiagnosticCode "TcRnSectionWithoutParentheses"                 = 95880
   GhcDiagnosticCode "TcRnIllegalImplicitParameterBindings"          = 50730
   GhcDiagnosticCode "TcRnIllegalTupleSection"                       = 59155
   GhcDiagnosticCode "TcRnTermNameInType"                            = 37479
+  GhcDiagnosticCode "TcRnUnexpectedKindVar"                         = 12875
+  GhcDiagnosticCode "TcRnNegativeNumTypeLiteral"                    = 93632
+  GhcDiagnosticCode "TcRnUnusedQuantifiedTypeVar"                   = 54180
+
   GhcDiagnosticCode "TcRnUntickedPromotedThing"                     = 49957
   GhcDiagnosticCode "TcRnIllegalBuiltinSyntax"                      = 39716
   GhcDiagnosticCode "TcRnWarnDefaulting"                            = 18042

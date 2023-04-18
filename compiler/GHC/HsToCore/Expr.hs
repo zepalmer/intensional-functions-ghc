@@ -307,6 +307,7 @@ dsExpr (HsLamCase _ lc_variant matches)
 dsExpr e@(HsApp _ fun arg)
   = do { fun' <- dsLExpr fun
        ; arg' <- dsLExpr arg
+       ; warnUnusedBindValue fun arg (exprType arg')
        ; return $ mkCoreAppDs (text "HsApp" <+> ppr e) fun' arg' }
 
 dsExpr e@(HsAppType {}) = dsHsWrapped e
@@ -682,7 +683,7 @@ dsDo ctx stmts
 
     go _ (BodyStmt _ rhs then_expr _) stmts
       = do { rhs2 <- dsLExpr rhs
-           ; warnDiscardedDoBindings rhs (exprType rhs2)
+           --; warnDiscardedDoBindings rhs (exprType rhs2)
            ; rest <- goL stmts
            ; dsSyntaxExpr then_expr [rhs2, rest] }
 
@@ -850,6 +851,29 @@ warnDiscardedDoBindings rhs rhs_ty
 
   | otherwise   -- RHS does have type of form (m ty), which is weird
   = return ()   -- but at least this warning is irrelevant
+
+
+warnUnusedBindValue :: LHsExpr GhcTc -> LHsExpr GhcTc -> Type -> DsM ()
+warnUnusedBindValue fun arg arg_ty
+  | Just (SrcSpanAnn _ l, f) <- fish_var fun
+  , is_gen_then f
+  , isNoSrcSpan l
+  = warnDiscardedDoBindings arg arg_ty
+  where
+    -- retrieve the location info and the head of the application
+    fish_var :: LHsExpr GhcTc -> Maybe (SrcSpanAnnA , LIdP GhcTc)
+    fish_var (L l (HsVar _ id)) = return (l, id)
+    fish_var (L _ (HsAppType _ e _ _)) = fish_var e
+    fish_var (L l (XExpr (WrapExpr (HsWrap _ e)))) = do (l, e') <- fish_var (L l e)
+                                                        return (l, e')
+    fish_var _ = Nothing
+
+    -- is this id a compiler generated (>>) with expanded do
+    is_gen_then :: LIdP GhcTc -> Bool
+    is_gen_then (L _ f) = f `hasKey` thenMClassOpKey
+
+warnUnusedBindValue _ _ _  = return ()
+
 
 {-
 ************************************************************************

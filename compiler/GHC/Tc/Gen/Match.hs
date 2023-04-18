@@ -1238,7 +1238,7 @@ expand_do_stmts do_or_lc ((L _ (BindStmt xbsrn pat e)): lstmts)
                                 ]
 
   | otherwise = -- just use the Prelude.>>= TODO: Necessary?
---                          stmts ~~> stmts'    
+--                          stmts ~~> stmts'
 --    -------------------------------------------------------
 --       pat <- e ; stmts   ~~> (Prelude.>>=) e (\ pat -> stmts')
       do traceTc "expand_do_stmts: generic binop" empty
@@ -1359,7 +1359,7 @@ expand_do_stmts _ (stmt@(L _ (ParStmt {})):_) =
 
   pprPanic "expand_do_stmts: ParStmt" $ ppr stmt
 
-expand_do_stmts do_flavor stmts = pprPanic "expand_do_stmts: impossible happened" $ (ppr do_flavor $$ ppr stmts)
+expand_do_stmts _ stmts = pprPanic "expand_do_stmts: impossible happened" $ (ppr stmts)
 
 
 

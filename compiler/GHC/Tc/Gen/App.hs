@@ -39,7 +39,6 @@ import GHC.Core.TyCo.Subst (substTyWithInScope)
 import GHC.Core.TyCo.FVs( shallowTyCoVarsOfType )
 import GHC.Core.Type
 import GHC.Core.Coercion
-import GHC.Core.FamInstEnv
 import GHC.Tc.Types.Evidence
 import GHC.Types.Var.Set
 import GHC.Builtin.PrimOps( tagToEnumKey )
@@ -328,7 +327,7 @@ tcApp rn_expr exp_res_ty
            vcat [ text "rn_fun:" <+> ppr rn_fun
                 , text "rn_args:" <+> ppr rn_args ]
        ; (tc_fun, fun_sigma) <- tcInferAppHead fun rn_args
-       
+
        -- Instantiate
        ; do_ql <- wantQuickLook rn_fun
        ; (delta, inst_args, app_res_rho) <- tcInstFun do_ql True fun fun_sigma rn_args
@@ -397,44 +396,9 @@ tcApp rn_expr exp_res_ty
                                       , text "tc_args:"     <+> ppr tc_args
                                       , text "tc_expr:"     <+> ppr tc_expr ]) }
 
-       -- Emit a warning if the bind value in a do statement is discarded
-       ; warnUnusedBindValue rn_fun tc_args
-
        -- Wrap the result
        ; return (mkHsWrap res_wrap tc_expr) }
 
--- emit a warning if the argument expression is not of type unit
-warnUnusedBindValue :: HsExpr GhcRn -> [HsExprArg 'TcpTc] -> TcM ()
-warnUnusedBindValue fun args
-  | is_gen_then fun
-  , (_ : _ : arg : _) <- args
-  = do { -- arg <- zonkArg arg
-         fam_inst_envs <- tcGetFamInstEnvs
-       ; let app_ty' = (scaledThing . eva_arg_ty) arg -- usually /m a/
-       ; app_ty <- zonkTcType app_ty'
-       ; let (_, (ret_ty':_)) = tcSplitAppTys app_ty  -- /a/
-       ; ret_ty <- zonkTcType ret_ty' -- ANI this maynot work as ret_ty' is an unsolved type variable and it gives rise to spurious unused bind warnings
-       ; let norm_elt_ty = topNormaliseType fam_inst_envs ret_ty
-                           -- normalize /a/ as it might be a type family 
-             not_unit_ty = (not . isUnitTy) norm_elt_ty
-                           -- is /a/ not /()/?
-       ; traceTc "warnUnusedBindValue" (vcat [ text "arg" <+> ppr arg
-                                             , text "arg_ty" <+> ppr (eva_arg_ty arg)
-                                             , text "app_ty" <+> ppr app_ty
-                                             , text "split" <+> ppr (tcSplitAppTys app_ty)
-                                             , text "norm_elt_ty" <+> ppr norm_elt_ty
-                                             ])
-       ; diagnosticTc not_unit_ty (TcRnUnUsedDoBind norm_elt_ty)
-       }
-  where
-    -- is this function a generated (>>)
-    is_gen_then :: HsExpr GhcRn -> Bool
-    is_gen_then (HsVar _ (L (SrcSpanAnn _ l) fun)) = fun `hasKey` thenMClassOpKey
-                                                    && isNoSrcSpan l
-    is_gen_then _ = False
-
-warnUnusedBindValue _ _ = return ()
-  
 --------------------
 wantQuickLook :: HsExpr GhcRn -> TcM Bool
 wantQuickLook (HsVar _ (L _ f))

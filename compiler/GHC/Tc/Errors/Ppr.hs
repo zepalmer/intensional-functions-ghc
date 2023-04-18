@@ -1304,7 +1304,6 @@ instance Diagnostic TcRnMessage where
     TcRnUnexpectedStatementInContext ctxt (UnexpectedStatement stmt) _ -> mkSimpleDecorated $
        sep [ text "Unexpected" <+> pprStmtCat stmt <+> text "statement"
                        , text "in" <+> pprAStmtContext ctxt ]
-    TcRnUnUsedDoBind ty -> mkSimpleDecorated $ pprBadMonadBind ty
     TcRnIllegalTupleSection -> mkSimpleDecorated $
       text "Illegal tuple section"
     TcRnIllegalImplicitParameterBindings eBinds -> mkSimpleDecorated $
@@ -2136,8 +2135,6 @@ instance Diagnostic TcRnMessage where
       -> ErrorWithoutFlag
     TcRnLastStmtNotExpr{}
       -> ErrorWithoutFlag
-    TcRnUnUsedDoBind{}
-      -> WarningWithFlag Opt_WarnUnusedDoBind
     TcRnUnexpectedStatementInContext{}
       -> ErrorWithoutFlag
     TcRnSectionWithoutParentheses{}
@@ -2720,8 +2717,6 @@ instance Diagnostic TcRnMessage where
     TcRnEmptyStmtsGroup{}
       -> noHints
     TcRnLastStmtNotExpr{}
-      -> noHints
-    TcRnUnUsedDoBind {}
       -> noHints
     TcRnUnexpectedStatementInContext _ _ mExt
       | Nothing <- mExt -> noHints
@@ -5039,8 +5034,47 @@ pprPatSynInvalidRhsReason = \case
     text "Pattern" <+> quotes (ppr p) <+> text "is not invertible"
   PatSynUnboundVar var ->
     quotes (ppr var) <+> text "is not bound by the LHS of the pattern synonym"
+pprBadFieldAnnotationReason :: BadFieldAnnotationReason -> SDoc
+pprBadFieldAnnotationReason = \case
+  LazyFieldsDisabled ->
+    text "Lazy field annotations (~) are disabled"
+  UnpackWithoutStrictness ->
+    text "UNPACK pragma lacks '!'"
+  BackpackUnpackAbstractType ->
+    text "Ignoring unusable UNPACK pragma"
 
-pprBadMonadBind :: Type -> SDoc
-pprBadMonadBind elt_ty
-  = hang (text "A do-notation statement discarded a result of type")
-       2 (quotes (ppr elt_ty))
+pprSuperclassCycleDetail :: SuperclassCycleDetail -> SDoc
+pprSuperclassCycleDetail = \case
+  SCD_HeadTyVar pred ->
+    hang (text "one of whose superclass constraints is headed by a type variable:")
+       2 (quotes (ppr pred))
+  SCD_HeadTyFam pred ->
+    hang (text "one of whose superclass constraints is headed by a type family:")
+       2 (quotes (ppr pred))
+  SCD_Superclass cls ->
+    text "one of whose superclasses is" <+> quotes (ppr cls)
+
+pprRoleValidationFailedReason :: Role -> RoleValidationFailedReason -> SDoc
+pprRoleValidationFailedReason role = \case
+  TyVarRoleMismatch tv role' ->
+    text "type variable" <+> quotes (ppr tv) <+>
+    text "cannot have role" <+> ppr role <+>
+    text "because it was assigned role" <+> ppr role'
+  TyVarMissingInEnv tv ->
+    text "type variable" <+> quotes (ppr tv) <+> text "missing in environment"
+  BadCoercionRole co ->
+    text "coercion" <+> ppr co <+> text "has bad role" <+> ppr role
+
+pprDisabledClassExtension :: Class -> DisabledClassExtension -> SDoc
+pprDisabledClassExtension cls = \case
+  MultiParamDisabled n ->
+    text howMany <+> text "parameters for class" <+> quotes (ppr cls)
+    where
+      howMany | n == 0 = "No"
+              | otherwise = "Too many"
+  FunDepsDisabled ->
+    text "Fundeps in class" <+> quotes (ppr cls)
+  ConstrainedClassMethodsDisabled sel_id pred ->
+    vcat [ hang (text "Constraint" <+> quotes (ppr pred)
+                 <+> text "in the type of" <+> quotes (ppr sel_id))
+              2 (text "constrains only the class type variables")]
