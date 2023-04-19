@@ -168,7 +168,7 @@ module GHC.Core.Type (
         coVarsOfTypes,
 
         anyFreeVarsOfType, anyFreeVarsOfTypes,
-        noFreeVarsOfType,
+        noFreeVarsOfType, noFreeVarsOfTypes,
         expandTypeSynonyms,
         typeSize, occCheckExpand,
 

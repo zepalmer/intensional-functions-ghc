@@ -2153,7 +2153,7 @@ mkGenSyms :: [Name] -> MetaM [GenSymBind]
 --
 -- Nevertheless, it's monadic because we have to generate nameTy
 mkGenSyms ns = do { var_ty <- lookupType nameTyConName
-                  ; return [ (nm, mkLocalId (localiseName nm) ManyTy var_ty)
+                  ; return [ (nm, mkLocalId (localiseName nm) (LambdaBound ManyTy) var_ty) -- ROMES:TODO: Locally bound how?
                            | nm <- ns] }
 
 

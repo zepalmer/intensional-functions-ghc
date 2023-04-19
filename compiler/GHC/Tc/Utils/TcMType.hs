@@ -189,7 +189,7 @@ newEvVars theta = mapM newEvVar theta
 newEvVar :: TcPredType -> TcRnIf gbl lcl EvVar
 -- Creates new *rigid* variables for predicates
 newEvVar ty = do { name <- newSysName (predTypeOccName ty)
-                 ; return (mkLocalIdOrCoVar name ManyTy ty) }
+                 ; return (mkLocalIdOrCoVar name (LambdaBound ManyTy) ty) } -- ROMES:TODO: variables for predicates?
 
 -- | Create a new Wanted constraint with the given 'CtLoc'.
 newWantedWithLoc :: CtLoc -> PredType -> TcM CtEvidence
@@ -317,7 +317,7 @@ emitNewExprHole occ ty
 newDict :: Class -> [TcType] -> TcM DictId
 newDict cls tys
   = do { name <- newSysName (mkDictOcc (getOccName cls))
-       ; return (mkLocalId name ManyTy (mkClassPred cls tys)) }
+       ; return (mkLocalId name (LambdaBound ManyTy) (mkClassPred cls tys)) } -- Dicts are lambda bound with Many
 
 predTypeOccName :: PredType -> OccName
 predTypeOccName ty = case classifyPredType ty of
@@ -2339,7 +2339,7 @@ zonkImplication implic@(Implic { ic_skols  = skols
                         , ic_info   = info' }) }
 
 zonkEvVar :: EvVar -> TcM EvVar
-zonkEvVar var = updateIdTypeAndMultM zonkTcType var
+zonkEvVar var = updateIdTypeAndMultsM zonkTcType var
 
 
 zonkWC :: WantedConstraints -> TcM WantedConstraints
@@ -2529,7 +2529,7 @@ zonkInvisTVBinder (Bndr tv spec) = do { tv' <- zonkTcTyVarToTcTyVar tv
 
 -- zonkId is used *during* typechecking just to zonk the Id's type
 zonkId :: TcId -> TcM TcId
-zonkId id = Id.updateIdTypeAndMultM zonkTcType id
+zonkId id = Id.updateIdTypeAndMultsM zonkTcType id
 
 zonkCoVar :: CoVar -> TcM CoVar
 zonkCoVar = zonkId
@@ -2675,7 +2675,7 @@ tidyFRROrigin env (FixedRuntimeRepOrigin ty orig)
 
 ----------------
 tidyEvVar :: TidyEnv -> EvVar -> EvVar
-tidyEvVar env var = updateIdTypeAndMult (tidyType env) var
+tidyEvVar env var = updateIdTypeAndMults (tidyType env) var
 
 
 -------------------------------------------------------------------------

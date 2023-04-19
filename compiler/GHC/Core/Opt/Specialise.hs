@@ -1327,7 +1327,7 @@ specCase env scrut' case_bndr [Alt con args rhs]
                        ; return (mkUserLocalOrCoVar occ uniq wght ty loc) }
        where
          name = idName bndr
-         wght = idMult bndr
+         wght = idBinding bndr
          ty   = idType bndr
          occ  = nameOccName name
          loc  = getSrcSpan name
@@ -3435,7 +3435,7 @@ newDictBndr env@(SE { se_subst = subst }) b
   = do { uniq <- getUniqueM
        ; let n    = idName b
              ty'  = substTyUnchecked subst (idType b)
-             b'   = mkUserLocal (nameOccName n) uniq ManyTy ty' (getSrcSpan n)
+             b'   = mkUserLocal (nameOccName n) uniq (LambdaBound ManyTy) ty' (getSrcSpan n)
              env' = env { se_subst = subst `Core.extendSubstInScope` b' }
        ; pure (env', b') }
 
@@ -3445,7 +3445,7 @@ newSpecIdSM old_id new_ty join_arity_maybe
   = do  { uniq <- getUniqueM
         ; let name    = idName old_id
               new_occ = mkSpecOcc (nameOccName name)
-              new_id  = mkUserLocal new_occ uniq ManyTy new_ty (getSrcSpan name)
+              new_id  = mkUserLocal new_occ uniq (LambdaBound ManyTy) new_ty (getSrcSpan name) -- Is this one LambdaBound?
                           `asJoinId_maybe` join_arity_maybe
         ; return new_id }
 
