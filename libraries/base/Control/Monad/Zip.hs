@@ -65,7 +65,7 @@ instance MonadZip [] where
 instance MonadZip NE.NonEmpty where
   mzip     = NE.zip
   mzipWith = NE.zipWith
-  munzip   = NE.unzip
+  munzip   = Data.Functor.unzip
 
 -- | @since 4.8.0.0
 instance MonadZip Identity where
