@@ -20,7 +20,7 @@ module Control.Monad.Zip where
 
 import Control.Monad (liftM, liftM2)
 import Data.Functor.Identity
-import Data.Functor qualified
+import qualified Data.Functor
 import Data.Monoid
 import Data.Ord ( Down(..) )
 import Data.Proxy
