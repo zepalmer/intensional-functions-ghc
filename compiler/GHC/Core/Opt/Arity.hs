@@ -68,6 +68,7 @@ import GHC.Core.TyCo.Compare( eqType )
 import GHC.Types.Demand
 import GHC.Types.Cpr( CprSig, mkCprSig, botCpr )
 import GHC.Types.Id
+import GHC.Types.Var
 import GHC.Types.Var.Env
 import GHC.Types.Var.Set
 import GHC.Types.Basic
@@ -2229,14 +2230,14 @@ mkEtaWW orig_oss ppr_orig_expr in_scope orig_ty
 
     go n oss@(one_shot:oss1) subst ty
        ----------- Forall types  (forall a. ty)
-       | Just (tcv,ty') <- splitForAllTyCoVar_maybe ty
+       | Just (Bndr tcv vis, ty') <- splitForAllForAllTyBinder_maybe ty
        , (subst', tcv') <- Type.substVarBndr subst tcv
        , let oss' | isTyVar tcv = oss
                   | otherwise   = oss1
          -- A forall can bind a CoVar, in which case
          -- we consume one of the [OneShotInfo]
        , (in_scope, EI bs mco) <- go n oss' subst' ty'
-       = (in_scope, EI (tcv' : bs) (mkHomoForAllMCo tcv' mco))
+       = (in_scope, EI (tcv' : bs) (mkHomoForAllMCo (Bndr tcv' vis) mco))
 
        ----------- Function types  (t1 -> t2)
        | Just (_af, mult, arg_ty, res_ty) <- splitFunTy_maybe ty
@@ -2706,9 +2707,14 @@ tryEtaReduce rec_ids bndrs body eval_sd
                                --   (and similarly for tyvars, coercion args)
                     , [CoreTickish])
     -- See Note [Eta reduction with casted arguments]
-    ok_arg bndr (Type ty) co _
-       | Just tv <- getTyVar_maybe ty
-       , bndr == tv  = Just (mkHomoForAllCos [tv] co, [])
+    ok_arg bndr (Type arg_ty) co fun_ty
+       | Just tv <- getTyVar_maybe arg_ty
+       , bndr == tv  = case splitForAllForAllTyBinder_maybe fun_ty of
+           Just (Bndr _ vis, _) -> Just (mkHomoForAllCos [Bndr tv vis] co, [])
+           Nothing -> pprPanic "tryEtaReduce: type arg to non-forall type"
+                               (text "fun:" <+> ppr bndr
+                                $$ text "arg:" <+> ppr arg_ty
+                                $$ text "fun_ty:" <+> ppr fun_ty)
     ok_arg bndr (Var v) co fun_ty
        | bndr == v
        , let mult = idMult bndr

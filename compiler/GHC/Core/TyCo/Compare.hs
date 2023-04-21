@@ -230,7 +230,6 @@ tc_eq_type keep_syns vis_only orig_ty1 orig_ty2
 -- equates 'Specified' and 'Inferred'. Used for printing.
 eqForAllVis :: ForAllTyFlag -> ForAllTyFlag -> Bool
 -- See Note [ForAllTy and type equality]
--- If you change this, see IMPORTANT NOTE in the above Note
 eqForAllVis Required      Required      = True
 eqForAllVis (Invisible _) (Invisible _) = True
 eqForAllVis _             _             = False
@@ -240,7 +239,6 @@ eqForAllVis _             _             = False
 -- equates 'Specified' and 'Inferred'. Used for printing.
 cmpForAllVis :: ForAllTyFlag -> ForAllTyFlag -> Ordering
 -- See Note [ForAllTy and type equality]
--- If you change this, see IMPORTANT NOTE in the above Note
 cmpForAllVis Required      Required       = EQ
 cmpForAllVis Required      (Invisible {}) = LT
 cmpForAllVis (Invisible _) Required       = GT
@@ -303,6 +301,7 @@ That is, we have the following:
   |                   | forall k -> <...> | Yes    |
   --------------------------------------------------
 
+REMOVE-ME:
 IMPORTANT NOTE: if we want to change this decision, ForAllCo will need to carry
 visiblity (by taking a ForAllTyBinder rathre than a TyCoVar), so that
 coercionLKind/RKind build forall types that match (are equal to) the desired
@@ -311,7 +310,7 @@ Examples: T16946, T15079.
 
 Historical Note [Typechecker equality vs definitional equality]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-This Note describes some history, in case there are vesitges of this
+This Note describes some history, in case there are vestiges of this
 history lying around in the code.
 
 Summary: prior to summer 2022, GHC had have two notions of equality

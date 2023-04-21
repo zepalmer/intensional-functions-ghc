@@ -452,7 +452,7 @@ to differ, leading to a contradiction. Thus, co is reflexive.
 
 Accordingly, by eliminating reflexive casts, splitTyConApp need not worry
 about outermost casts to uphold (EQ). Eliminating reflexive casts is done
-in mkCastTy. This is (EQ1) below.
+in mkCastTy. This is (EQ2) below.
 
 Unfortunately, that's not the end of the story. Consider comparing
   (T a b c)      =?       (T a b |> (co -> <Type>)) (c |> co)
@@ -475,7 +475,7 @@ our (EQ) property.
 
 In order to detect reflexive casts reliably, we must make sure not
 to have nested casts: we update (t |> co1 |> co2) to (t |> (co1 `TransCo` co2)).
-This is (EQ2) below.
+This is (EQ3) below.
 
 One other troublesome case is ForAllTy. See Note [Weird typing rule for ForAllTy].
 The kind of the body is the same as the kind of the ForAllTy. Accordingly,
@@ -850,7 +850,12 @@ data Coercion
           -- AppCo :: e -> N -> e
 
   -- See Note [Forall coercions]
-  | ForAllCo TyCoVar KindCoercion Coercion
+  | ForAllCoX
+      TyCoVar
+      !ForAllTyFlag -- visibility of coercionLKind
+      !ForAllTyFlag -- visibility of coercionRKind
+      KindCoercion
+      Coercion
          -- ForAllCo :: _ -> N -> e -> e
 
   | FunCo  -- FunCo :: "e" -> N/P -> e -> e -> e
@@ -1170,8 +1175,9 @@ The typing rule is:
   kind_co : k1 ~ k2
   tv1:k1 |- co : t1 ~ t2
   -------------------------------------------------------------------
-  ForAllCo tv1 kind_co co : all tv1:k1. t1  ~
-                            all tv1:k2. (t2[tv1 |-> tv1 |> sym kind_co])
+  ForAllCo tv1 vis1 vis2 kind_co co
+     : all tv1:k1 <vis1>. t1  ~
+       all tv1:k2 <vis2>. (t2[tv1 |-> tv1 |> sym kind_co])
 
 First, the TyCoVar stored in a ForAllCo is really an optimisation: this field
 should be a Name, as its kind is redundant. Thinking of the field as a Name
@@ -1751,7 +1757,7 @@ foldTyCo (TyCoFolder { tcf_view       = view
     go_co env (FunCo { fco_mult = cw, fco_arg = c1, fco_res = c2 })
        = go_co env cw `mappend` go_co env c1 `mappend` go_co env c2
 
-    go_co env (ForAllCo tv kind_co co)
+    go_co env (ForAllCoX tv _vis1 _vis2 kind_co co)
       = go_co env kind_co `mappend` go_ty env (varType tv)
                           `mappend` go_co env' co
       where
@@ -1806,7 +1812,7 @@ coercionSize (GRefl _ ty MRefl)    = typeSize ty
 coercionSize (GRefl _ ty (MCo co)) = 1 + typeSize ty + coercionSize co
 coercionSize (TyConAppCo _ _ args) = 1 + sum (map coercionSize args)
 coercionSize (AppCo co arg)        = coercionSize co + coercionSize arg
-coercionSize (ForAllCo _ h co)     = 1 + coercionSize co + coercionSize h
+coercionSize (ForAllCoX _ _ _ h co) = 1 + coercionSize co + coercionSize h
 coercionSize (FunCo _ _ _ w c1 c2) = 1 + coercionSize c1 + coercionSize c2
                                                          + coercionSize w
 coercionSize (CoVarCo _)         = 1

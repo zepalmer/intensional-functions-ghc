@@ -48,11 +48,11 @@ module GHC.Core.Type (
 
         mkForAllTy, mkForAllTys, mkInvisForAllTys, mkTyCoInvForAllTys,
         mkSpecForAllTy, mkSpecForAllTys,
-        mkVisForAllTys, mkTyCoInvForAllTy,
+        mkVisForAllTys, mkTyCoForAllTy, mkTyCoForAllTys, mkTyCoInvForAllTy,
         mkInfForAllTy, mkInfForAllTys,
         splitForAllTyCoVars, splitForAllTyVars,
         splitForAllReqTyBinders, splitForAllInvisTyBinders,
-        splitForAllForAllTyBinders,
+        splitForAllForAllTyBinders, splitForAllForAllTyBinder_maybe,
         splitForAllTyCoVar_maybe, splitForAllTyCoVar,
         splitForAllTyVar_maybe, splitForAllCoVar_maybe,
         splitPiTy_maybe, splitPiTy, splitPiTys,
@@ -547,9 +547,9 @@ expandTypeSynonyms ty
       = mkTyConAppCo r tc (map (go_co subst) args)
     go_co subst (AppCo co arg)
       = mkAppCo (go_co subst co) (go_co subst arg)
-    go_co subst (ForAllCo tv kind_co co)
+    go_co subst (ForAllCoX tv visL visR kind_co co)
       = let (subst', tv', kind_co') = go_cobndr subst tv kind_co in
-        mkForAllCo tv' kind_co' (go_co subst' co)
+        mkForAllCo tv' visL visR kind_co' (go_co subst' co)
     go_co subst (FunCo r afl afr w co1 co2)
       = mkFunCo2 r afl afr (go_co subst w) (go_co subst co1) (go_co subst co2)
     go_co subst (CoVarCo cv)
@@ -988,11 +988,11 @@ mapTyCoX (TyCoMapper { tcm_tyvar = tyvar
 
       | otherwise
       = mkTyConAppCo r tc <$> go_cos env cos
-    go_co env (ForAllCo tv kind_co co)
+    go_co env (ForAllCoX tv visL visR kind_co co)
       = do { kind_co' <- go_co env kind_co
-           ; (env', tv') <- tycobinder env tv Inferred
+           ; (env', tv') <- tycobinder env tv visL
            ; co' <- go_co env' co
-           ; return $ mkForAllCo tv' kind_co' co' }
+           ; return $ mkForAllCo tv' visL visR kind_co' co' }
         -- See Note [Efficiency for ForAllCo case of mapTyCoX]
 
     go_prov env (PhantomProv co)    = PhantomProv <$> go_co env co
@@ -1048,6 +1048,8 @@ invariant: use it.
 
 Note [Decomposing fat arrow c=>t]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+This note needs updating since the Type/Constraint separation in Core...
+
 Can we unify (a b) with (Eq a => ty)?   If we do so, we end up with
 a partial application like ((=>) (Eq a)) which doesn't make sense in
 source Haskell.  In contrast, we *can* unify (a b) with (t1 -> t2).
@@ -1755,14 +1757,23 @@ tyConBindersPiTyBinders = map to_tyb
     to_tyb (Bndr tv (NamedTCB vis)) = Named (Bndr tv vis)
     to_tyb (Bndr tv AnonTCB)        = Anon (tymult (varType tv)) FTF_T_T
 
--- | Make a dependent forall over an 'Inferred' variable
-mkTyCoInvForAllTy :: TyCoVar -> Type -> Type
-mkTyCoInvForAllTy tv ty
+-- | Make a dependent forall over a TyCoVar
+mkTyCoForAllTy :: TyCoVar -> ForAllTyFlag -> Type -> Type
+mkTyCoForAllTy tv vis ty
   | isCoVar tv
   , not (tv `elemVarSet` tyCoVarsOfType ty)
   = mkVisFunTyMany (varType tv) ty
   | otherwise
-  = ForAllTy (Bndr tv Inferred) ty
+  = ForAllTy (Bndr tv vis) ty
+
+-- | Make a dependent forall over a TyCoVar
+mkTyCoForAllTys :: [ForAllTyBinder] -> Type -> Type
+mkTyCoForAllTys bndrs ty
+  = foldr (\(Bndr var vis) -> mkTyCoForAllTy var vis) ty bndrs
+
+-- | Make a dependent forall over an 'Inferred' variable
+mkTyCoInvForAllTy :: TyCoVar -> Type -> Type
+mkTyCoInvForAllTy tv ty = mkTyCoForAllTy tv Inferred ty
 
 -- | Like 'mkTyCoInvForAllTy', but tv should be a tyvar
 mkInfForAllTy :: TyVar -> Type -> Type
@@ -1919,6 +1930,14 @@ dropForAlls ty = go ty
     go (ForAllTy _ res)            = go res
     go ty | Just ty' <- coreView ty = go ty'
     go res                         = res
+
+-- | Attempts to take a forall type apart, but only if it's a proper forall,
+-- with a named binder
+splitForAllForAllTyBinder_maybe :: Type -> Maybe (ForAllTyBinder, Type)
+splitForAllForAllTyBinder_maybe ty
+  | ForAllTy bndr inner_ty <- coreFullView ty = Just (bndr, inner_ty)
+  | otherwise                                 = Nothing
+
 
 -- | Attempts to take a forall type apart, but only if it's a proper forall,
 -- with a named binder

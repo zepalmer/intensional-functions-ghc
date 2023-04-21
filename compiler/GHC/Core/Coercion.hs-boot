@@ -16,7 +16,7 @@ import GHC.Utils.Misc
 mkReflCo :: Role -> Type -> Coercion
 mkTyConAppCo :: HasDebugCallStack => Role -> TyCon -> [Coercion] -> Coercion
 mkAppCo :: Coercion -> Coercion -> Coercion
-mkForAllCo :: TyCoVar -> Coercion -> Coercion -> Coercion
+mkForAllCo :: TyCoVar -> ForAllTyFlag -> ForAllTyFlag -> Coercion -> Coercion -> Coercion
 mkFunCo1 :: HasDebugCallStack => Role -> FunTyFlag -> CoercionN -> Coercion -> Coercion -> Coercion
 mkNakedFunCo1 :: Role -> FunTyFlag -> CoercionN -> Coercion -> Coercion -> Coercion
 mkFunCo2 :: HasDebugCallStack => Role -> FunTyFlag -> FunTyFlag -> CoercionN -> Coercion -> Coercion -> Coercion

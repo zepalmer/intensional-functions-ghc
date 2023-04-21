@@ -161,13 +161,12 @@ mkLamType  :: HasDebugCallStack => Var -> Type -> Type
 -- ^ Makes a @(->)@ type or an implicit forall type, depending
 -- on whether it is given a type variable or a term variable.
 -- This is used, for example, when producing the type of a lambda.
--- Always uses Inferred binders.
 mkLamTypes :: [Var] -> Type -> Type
 -- ^ 'mkLamType' for multiple type or value arguments
 
 mkLamType v body_ty
    | isTyVar v
-   = mkForAllTy (Bndr v Inferred) body_ty
+   = mkForAllTy (Bndr v Specified) body_ty
 
    | isCoVar v
    , v `elemVarSet` tyCoVarsOfType body_ty

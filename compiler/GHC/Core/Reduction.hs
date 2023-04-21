@@ -370,14 +370,15 @@ mkFunRedn r af
 --
 -- Combines 'mkForAllCo' and 'mkForAllTy'.
 mkForAllRedn :: ForAllTyFlag
+             -> ForAllTyFlag
              -> TyVar
              -> ReductionN -- ^ kind reduction
              -> Reduction  -- ^ body reduction
              -> Reduction
-mkForAllRedn vis tv1 (Reduction h ki') (Reduction co ty)
+mkForAllRedn vis1 vis2 tv1 (Reduction h ki') (Reduction co ty)
   = mkReduction
-      (mkForAllCo tv1 h co)
-      (mkForAllTy (Bndr tv2 vis) ty)
+      (mkForAllCo tv1 vis1 vis2 h co)
+      (mkForAllTy (Bndr tv2 vis2) ty)
   where
     tv2 = setTyVarKind tv1 ki'
 {-# INLINE mkForAllRedn #-}
@@ -389,7 +390,7 @@ mkForAllRedn vis tv1 (Reduction h ki') (Reduction co ty)
 mkHomoForAllRedn :: [TyVarBinder] -> Reduction -> Reduction
 mkHomoForAllRedn bndrs (Reduction co ty)
   = mkReduction
-      (mkHomoForAllCos (binderVars bndrs) co)
+      (mkHomoForAllCos bndrs co)
       (mkForAllTys bndrs ty)
 {-# INLINE mkHomoForAllRedn #-}
 

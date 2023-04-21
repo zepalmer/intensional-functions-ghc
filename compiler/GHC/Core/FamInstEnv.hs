@@ -1488,7 +1488,7 @@ normalise_type ty
     go (ForAllTy (Bndr tcvar vis) ty)
       = do { (lc', tv', k_redn) <- normalise_var_bndr tcvar
            ; redn <- withLC lc' $ normalise_type ty
-           ; return $ mkForAllRedn vis tv' k_redn redn }
+           ; return $ mkForAllRedn vis vis tv' k_redn redn }
     go (TyVarTy tv)    = normalise_tyvar tv
     go (CastTy ty co)
       = do { redn <- go ty

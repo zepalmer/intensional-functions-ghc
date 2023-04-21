@@ -56,6 +56,7 @@ import GHC.Data.Bag
 import Control.Monad
 import Data.Maybe ( isJust, isNothing )
 import Data.List  ( zip4 )
+import Data.Function ( on )
 
 import qualified Data.Semigroup as S
 import Data.Bifunctor ( bimap )
@@ -216,9 +217,8 @@ can_eq_nc' _rewritten _rdr_env _envs ev eq_rel ty1 _ ty2 _
   = canTyConApp ev eq_rel tc1 tys1 tc2 tys2
 
 can_eq_nc' _rewritten _rdr_env _envs ev eq_rel
-           s1@(ForAllTy (Bndr _ vis1) _) _
-           s2@(ForAllTy (Bndr _ vis2) _) _
-  | vis1 `eqForAllVis` vis2 -- Note [ForAllTy and type equality]
+           s1@(ForAllTy{}) _
+           s2@(ForAllTy{}) _
   = can_eq_nc_forall ev eq_rel s1 s2
 
 -- See Note [Canonicalising type applications] about why we require rewritten types
@@ -306,14 +306,25 @@ can_eq_nc_forall ev eq_rel s1 s2
  = do { let free_tvs       = tyCoVarsOfTypes [s1,s2]
             (bndrs1, phi1) = tcSplitForAllTyVarBinders s1
             (bndrs2, phi2) = tcSplitForAllTyVarBinders s2
-      ; if not (equalLength bndrs1 bndrs2)
-        then do { traceTcS "Forall failure" $
-                     vcat [ ppr s1, ppr s2, ppr bndrs1, ppr bndrs2
-                          , ppr (binderFlags bndrs1)
-                          , ppr (binderFlags bndrs2) ]
-                ; canEqHardFailure ev s1 s2 }
-        else
-   do { traceTcS "Creating implication for polytype equality" $ ppr ev
+            hard_fail why = do { traceTcS ("Forall failure: " ++ why) $
+                               vcat [ ppr s1, ppr s2, ppr bndrs1, ppr bndrs2
+                                    , ppr (binderFlags bndrs1)
+                                    , ppr (binderFlags bndrs2) ]
+                             ; canEqHardFailure ev s1 s2 }
+      ; if | eq_rel == NomEq
+           , not (and $ zipWith (eqForAllVis `on` binderFlag) bndrs1 bndrs2)
+           -> hard_fail "visibility mismatch"
+
+           | not (equalLength bndrs1 bndrs2)
+             -- I believe this relies on the (generally wrong) assumption
+             -- that type families never return a forall-type.
+             -- But newtypes can certainly wrap forall-types!
+             -- So we definitely shouldn't just reject for ReprEq.
+             -- See also #22537.
+           -> hard_fail "unequal foralls-nesting-depth"
+
+           | otherwise -> do {
+      ; traceTcS "Creating implication for polytype equality" $ ppr ev
       ; let empty_subst1 = mkEmptySubst $ mkInScopeSet free_tvs
       ; skol_info <- mkSkolemInfo (UnifyForAllSkol phi1)
       ; (subst1, skol_tvs) <- tcInstSkolTyVarsX skol_info empty_subst1 $
@@ -322,31 +333,33 @@ can_eq_nc_forall ev eq_rel s1 s2
       ; let phi1' = substTy subst1 phi1
 
             -- Unify the kinds, extend the substitution
-            go :: [TcTyVar] -> Subst -> [TyVarBinder]
+            go :: [TcTyVar] -> Subst -> [TyVarBinder] -> [TyVarBinder]
                -> TcS (TcCoercion, Cts)
-            go (skol_tv:skol_tvs) subst (bndr2:bndrs2)
+            go (skol_tv:skol_tvs) subst (bndr1:bndrs1) (bndr2:bndrs2)
               = do { let tv2 = binderVar bndr2
+                         vis1 = binderFlag bndr1
+                         vis2 = binderFlag bndr2
                    ; (kind_co, wanteds1) <- unify loc rewriters Nominal (tyVarKind skol_tv)
                                                   (substTy subst (tyVarKind tv2))
                    ; let subst' = extendTvSubstAndInScope subst tv2
                                        (mkCastTy (mkTyVarTy skol_tv) kind_co)
                          -- skol_tv is already in the in-scope set, but the
                          -- free vars of kind_co are not; hence "...AndInScope"
-                   ; (co, wanteds2) <- go skol_tvs subst' bndrs2
-                   ; return ( mkForAllCo skol_tv kind_co co
+                   ; (co, wanteds2) <- go skol_tvs subst' bndrs1 bndrs2
+                   ; return ( mkForAllCo skol_tv vis1 vis2 kind_co co
                             , wanteds1 `unionBags` wanteds2 ) }
 
             -- Done: unify phi1 ~ phi2
-            go [] subst bndrs2
-              = assert (null bndrs2) $
+            go [] subst bndrs1 bndrs2
+              = assert (null bndrs1 && null bndrs2) $
                 unify loc rewriters (eqRelRole eq_rel) phi1' (substTyUnchecked subst phi2)
 
-            go _ _ _ = panic "cna_eq_nc_forall"  -- case (s:ss) []
+            go _ _ _ _ = panic "cna_eq_nc_forall"  -- case (s:ss) []
 
             empty_subst2 = mkEmptySubst (getSubstInScope subst1)
 
       ; (lvl, (all_co, wanteds)) <- pushLevelNoWorkList (ppr skol_info) $
-                                    go skol_tvs empty_subst2 bndrs2
+                                    go skol_tvs empty_subst2 bndrs1 bndrs2
       ; emitTvImplicationTcS lvl (getSkolemInfo skol_info) skol_tvs wanteds
 
       ; setWantedEq orig_dest all_co

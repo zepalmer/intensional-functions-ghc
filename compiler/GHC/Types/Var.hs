@@ -126,6 +126,7 @@ import GHC.Utils.Panic
 import GHC.Utils.Panic.Plain
 
 import Data.Data
+import Control.DeepSeq
 
 {-
 ************************************************************************
@@ -453,7 +454,7 @@ updateVarTypeM upd var
 -- permitted by request ('Specified') (visible type application), or
 -- prohibited entirely from appearing in source Haskell ('Inferred')?
 -- See Note [VarBndrs, ForAllTyBinders, TyConBinders, and visibility] in "GHC.Core.TyCo.Rep"
-data ForAllTyFlag = Invisible Specificity
+data ForAllTyFlag = Invisible !Specificity
                   | Required
   deriving (Eq, Ord, Data)
   -- (<) on ForAllTyFlag means "is less visible than"
@@ -513,6 +514,13 @@ instance Binary ForAllTyFlag where
       0 -> return Required
       1 -> return Specified
       _ -> return Inferred
+
+instance NFData Specificity where
+  rnf SpecifiedSpec = ()
+  rnf InferredSpec = ()
+instance NFData ForAllTyFlag where
+  rnf (Invisible spec) = rnf spec
+  rnf Required = ()
 
 {- *********************************************************************
 *                                                                      *
@@ -882,7 +890,7 @@ Wrinkles
 
 
 Note [VarBndrs, ForAllTyBinders, TyConBinders, and visibility]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 * A ForAllTy (used for both types and kinds) contains a ForAllTyBinder.
   Each ForAllTyBinder
       Bndr a tvis

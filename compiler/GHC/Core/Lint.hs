@@ -48,7 +48,7 @@ import GHC.Core.Type as Type
 import GHC.Core.Multiplicity
 import GHC.Core.UsageEnv
 import GHC.Core.TyCo.Rep   -- checks validity of types/coercions
-import GHC.Core.TyCo.Compare( eqType )
+import GHC.Core.TyCo.Compare ( eqType, eqForAllVis )
 import GHC.Core.TyCo.Subst
 import GHC.Core.TyCo.FVs
 import GHC.Core.TyCo.Ppr
@@ -2222,7 +2222,7 @@ lintCoercion co@(AppCo co1 co2)
        ; return (AppCo co1' co2') }
 
 ----------
-lintCoercion co@(ForAllCo tcv kind_co body_co)
+lintCoercion co@(ForAllCoX tcv visL visR kind_co body_co)
   | not (isTyCoVar tcv)
   = failWithL (text "Non tyco binder in ForAllCo:" <+> ppr co)
   | otherwise
@@ -2238,7 +2238,7 @@ lintCoercion co@(ForAllCo tcv kind_co body_co)
        --    (forall (tcv:k2). rty[(tcv:k2) |> sym kind_co/tcv])
        -- are both well formed.  Easiest way is to call lintForAllBody
        -- for each; there is actually no need to do the funky substitution
-       ; let Pair lty rty = coercionKind body_co'
+       ; let (Pair lty rty, body_role) = coercionKindRole body_co'
        ; lintForAllBody tcv' lty
        ; lintForAllBody tcv' rty
 
@@ -2249,7 +2249,11 @@ lintCoercion co@(ForAllCo tcv kind_co body_co)
          -- Note [Unused coercion variable in ForAllCo]
          -- and c.f. GHC.Core.TyCo.Rep Note [Unused coercion variable in ForAllTy]
 
-       ; return (ForAllCo tcv' kind_co' body_co') } }
+       ; when (body_role == Nominal) $
+         lintL (visL `eqForAllVis` visR) $
+         text "Nominal ForAllCo has mismatched visibilities: " <+> ppr co
+
+       ; return (ForAllCoX tcv' visL visR kind_co' body_co') } }
 
 lintCoercion co@(FunCo { fco_role = r, fco_afl = afl, fco_afr = afr
                        , fco_mult = cow, fco_arg = co1, fco_res = co2 })

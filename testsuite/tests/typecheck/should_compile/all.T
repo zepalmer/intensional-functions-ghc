@@ -874,3 +874,5 @@ test('QualifiedRecordUpdate',
 test('T23171', normal, compile, [''])
 test('T23192', normal, compile, [''])
 test('T23199', normal, compile, [''])
+test('CoerceToVDQ', normal, compile, ['-dlint'])
+test('T22762', normal, compile, ['-dlint'])
