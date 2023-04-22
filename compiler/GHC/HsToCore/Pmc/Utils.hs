@@ -108,6 +108,9 @@ arrowMatchContextExhaustiveWarningFlag = \ case
 -- 'HsMatchContext' (does not matter whether it is the redundancy check or the
 -- exhaustiveness check).
 isMatchContextPmChecked :: DynFlags -> Origin -> HsMatchContext id -> Bool
+isMatchContextPmChecked _ origin LambdaExpr
+  | isGenerated origin
+  = True
 isMatchContextPmChecked dflags origin kind
   | isGenerated origin
   = False
@@ -119,7 +122,7 @@ isMatchContextPmChecked dflags origin kind
 needToRunPmCheck :: DynFlags -> Origin -> Bool
 needToRunPmCheck dflags origin
   | isGenerated origin
-  = False
+   = True
   | otherwise
   = notNull (filter (`wopt` dflags) allPmCheckWarnings)
 

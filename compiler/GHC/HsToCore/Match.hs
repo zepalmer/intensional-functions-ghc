@@ -783,6 +783,9 @@ matchWrapper ctxt scrs (MG { mg_alts = L _ matches
         -- Pattern match check warnings for /this match-group/.
         -- @rhss_nablas@ is a flat list of covered Nablas for each RHS.
         -- Each Match will split off one Nablas for its RHSs from this.
+        -- ; tracePm "matchWrapper" (vcat [ppr ctxt
+        --                                , text "matchPmChecked"
+        --                                , ppr $ isMatchContextPmChecked dflags origin ctxt])
         ; matches_nablas <- if isMatchContextPmChecked dflags origin ctxt
             then addHsScrutTmCs (concat scrs) new_vars $
                  -- See Note [Long-distance information]

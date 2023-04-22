@@ -150,6 +150,7 @@ dsHsBind dflags (VarBind { var_id = var
               force_var = if xopt LangExt.Strict dflags
                           then [id]
                           else []
+        -- ; tracePm "dsHsBind" (vcat [text "VarBind:", ppr force_var, ppr core_bind])
         ; return (force_var, [core_bind]) }
 
 dsHsBind dflags b@(FunBind { fun_id = L loc fun
@@ -179,10 +180,11 @@ dsHsBind dflags b@(FunBind { fun_id = L loc fun
                 = [id]
                 | otherwise
                 = []
-        ; --pprTrace "dsHsBind" (vcat [ ppr fun <+> ppr (idInlinePragma fun)
-          --                          , ppr (mg_alts matches)
-          --                          , ppr args, ppr core_binds, ppr body']) $
-          return (force_var, [core_binds]) } }
+        -- ; tracePm "dsHsBind" (vcat [ text "FunBind:",
+        --                             , ppr fun <+> ppr (idInlinePragma fun)
+        --                             , ppr (mg_alts matches)
+        --                             , ppr args, ppr core_binds, ppr body'])
+        ; return (force_var, [core_binds]) } }
 
 dsHsBind dflags (PatBind { pat_lhs = pat, pat_rhs = grhss
                          , pat_ext = (ty, (rhs_tick, var_ticks))
@@ -197,6 +199,9 @@ dsHsBind dflags (PatBind { pat_lhs = pat, pat_rhs = grhss
         ; let force_var' = if isBangedLPat pat'
                            then [force_var]
                            else []
+        -- ; tracePm "dsHsBind" (vcat [text "PatBind"
+        --                             , ppr force_var'
+        --                             , ppr sel_binds])
         ; return (force_var', sel_binds) }
 
 dsHsBind

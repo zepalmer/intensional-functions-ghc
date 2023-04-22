@@ -159,7 +159,7 @@ pmcMatches ctxt vars matches = {-# SCC "pmcMatches" #-} do
   tracePm "pmcMatches {" $
           hang (vcat [ppr ctxt, ppr vars, text "Matches:"])
                2
-               (vcat (map ppr matches) $$ ppr missing)
+               (vcat (map ppr matches) $$ (text "missing:" <+> ppr missing))
   case NE.nonEmpty matches of
     Nothing -> do
       -- This must be an -XEmptyCase. See Note [Checking EmptyCase]

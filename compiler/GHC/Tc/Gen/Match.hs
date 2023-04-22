@@ -326,7 +326,9 @@ tcDoStmts doExpr@(DoExpr _) (L l stmts) res_ty
         ; let expand_do_expr = mkExpandedExpr (HsDo noExtField doExpr (L l stmts))
                                                (unLoc expand_expr)
                                         -- Do expansion on the fly
-        ; traceTc "tcDoStmts do" (text "tcExpr:" <+> ppr expand_do_expr)
+        ; traceTc "tcDoStmts do" (vcat [ text "original:" <+> ppr expand_do_expr
+                                       , text "expnd:" <+> ppr expand_expr
+                                       ])
         ; tcExpr expand_do_expr res_ty
         }
 

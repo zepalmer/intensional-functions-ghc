@@ -326,6 +326,7 @@ tcApp rn_expr exp_res_ty
   = do { traceTc "tcApp {" $
            vcat [ text "rn_fun:" <+> ppr rn_fun
                 , text "rn_args:" <+> ppr rn_args ]
+
        ; (tc_fun, fun_sigma) <- tcInferAppHead fun rn_args
 
        -- Instantiate
