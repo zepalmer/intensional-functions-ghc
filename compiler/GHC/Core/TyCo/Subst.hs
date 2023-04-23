@@ -889,7 +889,7 @@ subst_co subst co
     go (TyConAppCo r tc args)= let args' = map go args
                                in  args' `seqList` mkTyConAppCo r tc args'
     go (AppCo co arg)        = (mkAppCo $! go co) $! go arg
-    go (ForAllCoX tv visL visR kind_co co)
+    go (ForAllCo tv visL visR kind_co co)
       = case substForAllCoBndrUnchecked subst tv kind_co of
          (subst', tv', kind_co') ->
           ((mkForAllCo $! tv') visL visR $! kind_co') $! subst_co subst' co

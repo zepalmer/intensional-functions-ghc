@@ -2222,7 +2222,7 @@ lintCoercion co@(AppCo co1 co2)
        ; return (AppCo co1' co2') }
 
 ----------
-lintCoercion co@(ForAllCoX tcv visL visR kind_co body_co)
+lintCoercion co@(ForAllCo tcv visL visR kind_co body_co)
   | not (isTyCoVar tcv)
   = failWithL (text "Non tyco binder in ForAllCo:" <+> ppr co)
   | otherwise
@@ -2253,7 +2253,7 @@ lintCoercion co@(ForAllCoX tcv visL visR kind_co body_co)
          lintL (visL `eqForAllVis` visR) $
          text "Nominal ForAllCo has mismatched visibilities: " <+> ppr co
 
-       ; return (ForAllCoX tcv' visL visR kind_co' body_co') } }
+       ; return (ForAllCo tcv' visL visR kind_co' body_co') } }
 
 lintCoercion co@(FunCo { fco_role = r, fco_afl = afl, fco_afr = afr
                        , fco_mult = cow, fco_arg = co1, fco_res = co2 })

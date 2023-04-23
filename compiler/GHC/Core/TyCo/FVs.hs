@@ -631,7 +631,7 @@ tyCoFVsOfCo (GRefl _ ty mco) fv_cand in_scope acc
 tyCoFVsOfCo (TyConAppCo _ _ cos) fv_cand in_scope acc = tyCoFVsOfCos cos fv_cand in_scope acc
 tyCoFVsOfCo (AppCo co arg) fv_cand in_scope acc
   = (tyCoFVsOfCo co `unionFV` tyCoFVsOfCo arg) fv_cand in_scope acc
-tyCoFVsOfCo (ForAllCoX tv _visL _visR kind_co co) fv_cand in_scope acc
+tyCoFVsOfCo (ForAllCo tv _visL _visR kind_co co) fv_cand in_scope acc
   = (tyCoFVsVarBndr tv (tyCoFVsOfCo co) `unionFV` tyCoFVsOfCo kind_co) fv_cand in_scope acc
 tyCoFVsOfCo (FunCo { fco_mult = w, fco_arg = co1, fco_res = co2 }) fv_cand in_scope acc
   = (tyCoFVsOfCo co1 `unionFV` tyCoFVsOfCo co2 `unionFV` tyCoFVsOfCo w) fv_cand in_scope acc
@@ -686,7 +686,7 @@ almost_devoid_co_var_of_co (TyConAppCo _ _ cos) cv
 almost_devoid_co_var_of_co (AppCo co arg) cv
   = almost_devoid_co_var_of_co co cv
   && almost_devoid_co_var_of_co arg cv
-almost_devoid_co_var_of_co (ForAllCoX v _visL _visR kind_co co) cv
+almost_devoid_co_var_of_co (ForAllCo v _visL _visR kind_co co) cv
   = almost_devoid_co_var_of_co kind_co cv
   && (v == cv || almost_devoid_co_var_of_co co cv)
 almost_devoid_co_var_of_co (FunCo { fco_mult = w, fco_arg = co1, fco_res = co2 }) cv
@@ -1109,7 +1109,7 @@ tyConsOfType ty
      go_co (GRefl _ ty mco)        = go ty `unionUniqSets` go_mco mco
      go_co (TyConAppCo _ tc args)  = go_tc tc `unionUniqSets` go_cos args
      go_co (AppCo co arg)          = go_co co `unionUniqSets` go_co arg
-     go_co (ForAllCoX _ _ _ kind_co co) = go_co kind_co `unionUniqSets` go_co co
+     go_co (ForAllCo _ _ _ kind_co co) = go_co kind_co `unionUniqSets` go_co co
      go_co (FunCo { fco_mult = m, fco_arg = a, fco_res = r })
                                    = go_co m `unionUniqSets` go_co a `unionUniqSets` go_co r
      go_co (AxiomInstCo ax _ args) = go_ax ax `unionUniqSets` go_cos args
@@ -1293,14 +1293,14 @@ occCheckExpand vs_to_avoid ty
     go_co cxt (AppCo co arg)            = do { co' <- go_co cxt co
                                              ; arg' <- go_co cxt arg
                                              ; return (AppCo co' arg') }
-    go_co cxt@(as, env) (ForAllCoX tv visL visR kind_co body_co)
+    go_co cxt@(as, env) (ForAllCo tv visL visR kind_co body_co)
       = do { kind_co' <- go_co cxt kind_co
            ; let tv' = setVarType tv $
                        coercionLKind kind_co'
                  env' = extendVarEnv env tv tv'
                  as'  = as `delVarSet` tv
            ; body' <- go_co (as', env') body_co
-           ; return (ForAllCoX tv' visL visR kind_co' body') }
+           ; return (ForAllCo tv' visL visR kind_co' body') }
     go_co cxt co@(FunCo { fco_mult = w, fco_arg = co1 ,fco_res = co2 })
       = do { co1' <- go_co cxt co1
            ; co2' <- go_co cxt co2

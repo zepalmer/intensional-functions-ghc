@@ -380,7 +380,7 @@ data IfaceCoercion
   | IfaceFunCo        Role IfaceCoercion IfaceCoercion IfaceCoercion
   | IfaceTyConAppCo   Role IfaceTyCon [IfaceCoercion]
   | IfaceAppCo        IfaceCoercion IfaceCoercion
-  | IfaceForAllCoY    IfaceBndr !ForAllTyFlag !ForAllTyFlag IfaceCoercion IfaceCoercion
+  | IfaceForAllCo     IfaceBndr !ForAllTyFlag !ForAllTyFlag IfaceCoercion IfaceCoercion
   | IfaceCoVarCo      IfLclName
   | IfaceAxiomInstCo  IfExtName BranchIndex [IfaceCoercion]
   | IfaceAxiomRuleCo  IfLclName [IfaceCoercion]
@@ -604,7 +604,7 @@ substIfaceType env ty
     go_co (IfaceFunCo r w c1 c2)     = IfaceFunCo r (go_co w) (go_co c1) (go_co c2)
     go_co (IfaceTyConAppCo r tc cos) = IfaceTyConAppCo r tc (go_cos cos)
     go_co (IfaceAppCo c1 c2)         = IfaceAppCo (go_co c1) (go_co c2)
-    go_co (IfaceForAllCoY {})        = pprPanic "substIfaceCoercion" (ppr ty)
+    go_co (IfaceForAllCo {})        = pprPanic "substIfaceCoercion" (ppr ty)
     go_co (IfaceFreeCoVar cv)        = IfaceFreeCoVar cv
     go_co (IfaceCoVarCo cv)          = IfaceCoVarCo cv
     go_co (IfaceHoleCo cv)           = IfaceHoleCo cv
@@ -1791,16 +1791,16 @@ ppr_co _         (IfaceTyConAppCo r tc cos)
 ppr_co ctxt_prec (IfaceAppCo co1 co2)
   = maybeParen ctxt_prec appPrec $
     ppr_co funPrec co1 <+> pprParendIfaceCoercion co2
-ppr_co ctxt_prec co@(IfaceForAllCoY {})
+ppr_co ctxt_prec co@(IfaceForAllCo {})
   = maybeParen ctxt_prec funPrec $
     -- FIXME: collect and pretty-print visibility info?
     pprIfaceForAllCoPart tvs (pprIfaceCoercion inner_co)
   where
     (tvs, inner_co) = split_co co
 
-    split_co (IfaceForAllCoY (IfaceTvBndr (name, _)) _visL _visR kind_co co')
+    split_co (IfaceForAllCo (IfaceTvBndr (name, _)) _visL _visR kind_co co')
       = let (tvs, co'') = split_co co' in ((name,kind_co):tvs,co'')
-    split_co (IfaceForAllCoY (IfaceIdBndr (_, name, _)) _visL _visR kind_co co')
+    split_co (IfaceForAllCo (IfaceIdBndr (_, name, _)) _visL _visR kind_co co')
       = let (tvs, co'') = split_co co' in ((name,kind_co):tvs,co'')
     split_co co' = ([], co')
 
@@ -2107,7 +2107,7 @@ instance Binary IfaceCoercion where
           putByte bh 5
           put_ bh a
           put_ bh b
-  put_ bh (IfaceForAllCoY a visL visR b c) = do
+  put_ bh (IfaceForAllCo a visL visR b c) = do
           putByte bh 6
           put_ bh a
           put_ bh visL
@@ -2189,7 +2189,7 @@ instance Binary IfaceCoercion where
                    visR <- get bh
                    b <- get bh
                    c <- get bh
-                   return $ IfaceForAllCoY a visL visR b c
+                   return $ IfaceForAllCo a visL visR b c
            7 -> do a <- get bh
                    return $ IfaceCoVarCo a
            8 -> do a <- get bh
@@ -2287,7 +2287,7 @@ instance NFData IfaceCoercion where
     IfaceFunCo f1 f2 f3 f4 -> f1 `seq` rnf f2 `seq` rnf f3 `seq` rnf f4
     IfaceTyConAppCo f1 f2 f3 -> f1 `seq` rnf f2 `seq` rnf f3
     IfaceAppCo f1 f2 -> rnf f1 `seq` rnf f2
-    IfaceForAllCoY f1 f2 f3 f4 f5 -> rnf f1 `seq` rnf f2 `seq` rnf f3 `seq` rnf f4 `seq` rnf f5
+    IfaceForAllCo f1 f2 f3 f4 f5 -> rnf f1 `seq` rnf f2 `seq` rnf f3 `seq` rnf f4 `seq` rnf f5
     IfaceCoVarCo f1 -> rnf f1
     IfaceAxiomInstCo f1 f2 f3 -> rnf f1 `seq` rnf f2 `seq` rnf f3
     IfaceAxiomRuleCo f1 f2 -> rnf f1 `seq` rnf f2

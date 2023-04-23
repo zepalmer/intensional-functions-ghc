@@ -547,7 +547,7 @@ expandTypeSynonyms ty
       = mkTyConAppCo r tc (map (go_co subst) args)
     go_co subst (AppCo co arg)
       = mkAppCo (go_co subst co) (go_co subst arg)
-    go_co subst (ForAllCoX tv visL visR kind_co co)
+    go_co subst (ForAllCo tv visL visR kind_co co)
       = let (subst', tv', kind_co') = go_cobndr subst tv kind_co in
         mkForAllCo tv' visL visR kind_co' (go_co subst' co)
     go_co subst (FunCo r afl afr w co1 co2)
@@ -988,7 +988,7 @@ mapTyCoX (TyCoMapper { tcm_tyvar = tyvar
 
       | otherwise
       = mkTyConAppCo r tc <$> go_cos env cos
-    go_co env (ForAllCoX tv visL visR kind_co co)
+    go_co env (ForAllCo tv visL visR kind_co co)
       = do { kind_co' <- go_co env kind_co
            ; (env', tv') <- tycobinder env tv visL
            ; co' <- go_co env' co

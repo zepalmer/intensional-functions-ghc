@@ -311,8 +311,8 @@ toIfaceCoercionX fr co
     go (FunCo { fco_role = r, fco_mult = w, fco_arg = co1, fco_res = co2 })
       = IfaceFunCo r (go w) (go co1) (go co2)
 
-    go (ForAllCoX tv visL visR k co)
-      = IfaceForAllCoY(toIfaceBndr tv)
+    go (ForAllCo tv visL visR k co)
+      = IfaceForAllCo (toIfaceBndr tv)
                       visL
                       visR
                       (toIfaceCoercionX fr' k)

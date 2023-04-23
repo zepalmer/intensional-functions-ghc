@@ -291,7 +291,7 @@ opt_co4 env sym rep r (AppCo co1 co2)
   = mkAppCo (opt_co4_wrap env sym rep r co1)
             (opt_co4_wrap env sym False Nominal co2)
 
-opt_co4 env sym rep r (ForAllCoX tv visL visR k_co co)
+opt_co4 env sym rep r (ForAllCo tv visL visR k_co co)
   = case optForAllCoBndr env sym tv k_co of
       (env', tv', k_co') -> mkForAllCo tv' visL visR k_co' $
                             opt_co4_wrap env' sym rep r co
@@ -377,7 +377,7 @@ opt_co4 env sym rep r (SelCo (SelTyCon n r1) (TyConAppCo _ _ cos))
 opt_co4 env sym rep r (SelCo (SelFun fs) (FunCo _r2 _afl _afr w co1 co2))
   = opt_co4_wrap env sym rep r (getNthFun fs w co1 co2)
 
-opt_co4 env sym rep _ (SelCo SelForAll (ForAllCoX _ _ _ eta _))
+opt_co4 env sym rep _ (SelCo SelForAll (ForAllCo _ _ _ eta _))
       -- works for both tyvar and covar
   = opt_co4_wrap env sym rep Nominal eta
 
@@ -385,7 +385,7 @@ opt_co4 env sym rep r (SelCo n co)
   | Just nth_co <- case (co', n) of
       (TyConAppCo _ _ cos, SelTyCon n _) -> Just (cos `getNth` n)
       (FunCo _ _ _ w co1 co2, SelFun fs) -> Just (getNthFun fs w co1 co2)
-      (ForAllCoX _ _ _ eta _, SelForAll) -> Just eta
+      (ForAllCo _ _ _ eta _, SelForAll) -> Just eta
       _                  -> Nothing
   = if rep && (r == Nominal)
       -- keep propagating the SubCo

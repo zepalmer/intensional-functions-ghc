@@ -850,7 +850,7 @@ data Coercion
           -- AppCo :: e -> N -> e
 
   -- See Note [Forall coercions]
-  | ForAllCoX
+  | ForAllCo
       TyCoVar
       !ForAllTyFlag -- visibility of coercionLKind
       !ForAllTyFlag -- visibility of coercionRKind
@@ -1757,7 +1757,7 @@ foldTyCo (TyCoFolder { tcf_view       = view
     go_co env (FunCo { fco_mult = cw, fco_arg = c1, fco_res = c2 })
        = go_co env cw `mappend` go_co env c1 `mappend` go_co env c2
 
-    go_co env (ForAllCoX tv _vis1 _vis2 kind_co co)
+    go_co env (ForAllCo tv _vis1 _vis2 kind_co co)
       = go_co env kind_co `mappend` go_ty env (varType tv)
                           `mappend` go_co env' co
       where
@@ -1812,7 +1812,7 @@ coercionSize (GRefl _ ty MRefl)    = typeSize ty
 coercionSize (GRefl _ ty (MCo co)) = 1 + typeSize ty + coercionSize co
 coercionSize (TyConAppCo _ _ args) = 1 + sum (map coercionSize args)
 coercionSize (AppCo co arg)        = coercionSize co + coercionSize arg
-coercionSize (ForAllCoX _ _ _ h co) = 1 + coercionSize co + coercionSize h
+coercionSize (ForAllCo _ _ _ h co) = 1 + coercionSize co + coercionSize h
 coercionSize (FunCo _ _ _ w c1 c2) = 1 + coercionSize c1 + coercionSize c2
                                                          + coercionSize w
 coercionSize (CoVarCo _)         = 1

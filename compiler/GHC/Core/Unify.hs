@@ -1673,7 +1673,7 @@ ty_co_match menv subst (FunTy { ft_mult = w, ft_arg = ty1, ft_res = ty2 })
     --     not doing so caused #21205.
 
 ty_co_match menv subst (ForAllTy (Bndr tv1 vis1t) ty1)
-                       (ForAllCoX tv2 vis1c vis2c kind_co2 co2)
+                       (ForAllCo tv2 vis1c vis2c kind_co2 co2)
                        lkco rkco
   | isTyVar tv1 && isTyVar tv2
   , vis1t == vis1c && vis1c == vis2c -- Is this necessary?
@@ -1777,7 +1777,7 @@ pushRefl co =
     Just (TyConApp tc tys, r)
       -> Just (TyConAppCo r tc (zipWith mkReflCo (tyConRoleListX r tc) tys))
     Just (ForAllTy (Bndr tv vis) ty, r)
-      -> Just (ForAllCoX tv vis vis (mkNomReflCo (varType tv)) (mkReflCo r ty))
+      -> Just (ForAllCo tv vis vis (mkNomReflCo (varType tv)) (mkReflCo r ty))
     -- NB: NoRefl variant. Otherwise, we get a loop!
     _ -> Nothing
 

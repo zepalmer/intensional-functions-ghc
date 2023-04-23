@@ -169,6 +169,7 @@ import Control.Monad (foldM, zipWithM)
 import Data.Function ( on )
 import Data.Char( isDigit )
 import qualified Data.Monoid as Monoid
+import Control.DeepSeq
 
 {-
 %************************************************************************
@@ -556,18 +557,18 @@ splitFunCo_maybe (FunCo { fco_arg = arg, fco_res = res }) = Just (arg, res)
 splitFunCo_maybe _ = Nothing
 
 splitForAllCo_maybe :: Coercion -> Maybe (TyCoVar, ForAllTyFlag, ForAllTyFlag, Coercion, Coercion)
-splitForAllCo_maybe (ForAllCoX tv vL vR k_co co) = Just (tv, vL, vR, k_co, co)
+splitForAllCo_maybe (ForAllCo tv vL vR k_co co) = Just (tv, vL, vR, k_co, co)
 splitForAllCo_maybe _ = Nothing
 
 -- | Like 'splitForAllCo_maybe', but only returns Just for tyvar binder
 splitForAllCo_ty_maybe :: Coercion -> Maybe (TyVar, ForAllTyFlag, ForAllTyFlag, Coercion, Coercion)
-splitForAllCo_ty_maybe (ForAllCoX tv vL vR k_co co)
+splitForAllCo_ty_maybe (ForAllCo tv vL vR k_co co)
   | isTyVar tv = Just (tv, vL, vR, k_co, co)
 splitForAllCo_ty_maybe _ = Nothing
 
 -- | Like 'splitForAllCo_maybe', but only returns Just for covar binder
 splitForAllCo_co_maybe :: Coercion -> Maybe (CoVar, ForAllTyFlag, ForAllTyFlag, Coercion, Coercion)
-splitForAllCo_co_maybe (ForAllCoX cv vL vR k_co co)
+splitForAllCo_co_maybe (ForAllCo cv vL vR k_co co)
   | isCoVar cv = Just (cv, vL, vR, k_co, co)
 splitForAllCo_co_maybe _ = Nothing
 
@@ -966,7 +967,7 @@ mkForAllCo v visL visR kind_co co
   , visL `eqForAllVis` visR
   = mkReflCo r (mkTyCoForAllTy v visL ty)
   | otherwise
-  = ForAllCoX v visL visR kind_co co
+  = ForAllCo v visL visR kind_co co
 
 -- | Like 'mkForAllCo', but the inner coercion shouldn't be an obvious
 -- reflexive coercion. For example, it is guaranteed in 'mkForAllCos'.
@@ -981,7 +982,7 @@ mkForAllCo_NoRefl v visL visR kind_co co
   = mkFunCoNoFTF (coercionRole co) (multToCo ManyTy) kind_co co
       -- Functions from coercions are always unrestricted
   | otherwise
-  = ForAllCoX v visL visR kind_co co
+  = ForAllCo v visL visR kind_co co
 
 -- | Make nested ForAllCos, with 'Specified' visibility
 mkForAllCos :: [(TyCoVar, CoercionN)] -> Coercion -> Coercion
@@ -1165,7 +1166,7 @@ mkSelCo_maybe cs co
       | Just (ty, r) <- isReflCo_maybe co
       = Just (mkReflCo r (getNthFromType cs ty))
 
-    go SelForAll (ForAllCoX _ _ _ kind_co _)
+    go SelForAll (ForAllCo _ _ _ kind_co _)
       = Just kind_co
       -- If co :: (forall a1:k1. t1) ~ (forall a2:k2. t2)
       -- then (nth SelForAll co :: k1 ~N k2)
@@ -1233,7 +1234,7 @@ mkLRCo lr co
 
 -- | Instantiates a 'Coercion'.
 mkInstCo :: Coercion -> CoercionN -> Coercion
-mkInstCo (ForAllCoX tcv _visL _visR _kind_co body_co) co
+mkInstCo (ForAllCo tcv _visL _visR _kind_co body_co) co
   | Just (arg, _) <- isReflCo_maybe co
       -- works for both tyvar and covar
   = substCoUnchecked (zipTCvSubst [tcv] [arg]) body_co
@@ -1385,9 +1386,9 @@ setNominalRole_maybe r co
       = TransCo <$> setNominalRole_maybe_helper co1 <*> setNominalRole_maybe_helper co2
     setNominalRole_maybe_helper (AppCo co1 co2)
       = AppCo <$> setNominalRole_maybe_helper co1 <*> pure co2
-    setNominalRole_maybe_helper (ForAllCoX tv visL visR kind_co co)
+    setNominalRole_maybe_helper (ForAllCo tv visL visR kind_co co)
       | visL `eqForAllVis` visR
-      = ForAllCoX tv visL visR kind_co <$> setNominalRole_maybe_helper co
+      = ForAllCo tv visL visR kind_co <$> setNominalRole_maybe_helper co
     setNominalRole_maybe_helper (SelCo n co)
       -- NB, this case recurses via setNominalRole_maybe, not
       -- setNominalRole_maybe_helper!
@@ -1498,11 +1499,11 @@ promoteCoercion co = case co of
       | otherwise
       -> mkKindCo co
 
-    ForAllCoX tv _ _ _ g
+    ForAllCo tv _ _ _ g
       | isTyVar tv
       -> promoteCoercion g
 
-    ForAllCoX {}
+    ForAllCo {}
       -- Is it possible to make a tricky coercion with type
       -- "forall {covar}. ty ~R# forall covar -> ty"? Probably not;
       -- forall-covar-types are still very internal-ish and limited.
@@ -2328,7 +2329,7 @@ seqCo (Refl ty)                 = seqType ty
 seqCo (GRefl r ty mco)          = r `seq` seqType ty `seq` seqMCo mco
 seqCo (TyConAppCo r tc cos)     = r `seq` tc `seq` seqCos cos
 seqCo (AppCo co1 co2)           = seqCo co1 `seq` seqCo co2
-seqCo (ForAllCoX tv visL visR k co) = seqType (varType tv) `seq`
+seqCo (ForAllCo tv visL visR k co) = seqType (varType tv) `seq`
                                       rnf visL `seq` rnf visR `seq`
                                       seqCo k `seq` seqCo co
 seqCo (FunCo r af1 af2 w co1 co2) = r `seq` af1 `seq` af2 `seq`
@@ -2395,7 +2396,7 @@ coercionLKind co
     go (GRefl _ ty _)            = ty
     go (TyConAppCo _ tc cos)     = mkTyConApp tc (map go cos)
     go (AppCo co1 co2)           = mkAppTy (go co1) (go co2)
-    go (ForAllCoX tv1 visL _ _ co1) = mkTyCoForAllTy tv1 visL (go co1)
+    go (ForAllCo tv1 visL _ _ co1) = mkTyCoForAllTy tv1 visL (go co1)
     go (FunCo { fco_afl = af, fco_mult = mult, fco_arg = arg, fco_res = res})
        {- See Note [FunCo] -}    = FunTy { ft_af = af, ft_mult = go mult
                                          , ft_arg = go arg, ft_res = go res }
@@ -2474,7 +2475,7 @@ coercionRKind co
     go (AxiomRuleCo ax cos)      = pSnd $ expectJust "coercionKind" $
                                    coaxrProves ax $ map coercionKind cos
 
-    go co@(ForAllCoX tv1 _visL visR k_co co1) -- works for both tyvar and covar
+    go co@(ForAllCo tv1 _visL visR k_co co1) -- works for both tyvar and covar
        | isGReflCo k_co           = mkTyCoForAllTy tv1 visR (go co1)
          -- kind_co always has kind @Type@, thus @isGReflCo@
        | otherwise                = go_forall empty_subst co
@@ -2498,7 +2499,7 @@ coercionRKind co
     go_app (InstCo co arg) args = go_app co (go arg:args)
     go_app co              args = piResultTys (go co) args
 
-    go_forall subst (ForAllCoX tv1 _visL visR k_co co)
+    go_forall subst (ForAllCo tv1 _visL visR k_co co)
       -- See Note [Nested ForAllCos]
       | isTyVar tv1
       = mkForAllTy (Bndr tv2 visR) (go_forall subst' co)
@@ -2510,7 +2511,7 @@ coercionRKind co
                | otherwise      = extendTvSubst (extendSubstInScope subst tv2) tv1 $
                                   TyVarTy tv2 `mkCastTy` mkSymCo k_co
 
-    go_forall subst (ForAllCoX cv1 _visL visR k_co co)
+    go_forall subst (ForAllCo cv1 _visL visR k_co co)
       | isCoVar cv1
       = mkTyCoForAllTy cv2 visR (go_forall subst' co)
       where
@@ -2564,7 +2565,7 @@ coercionRole = go
     go (GRefl r _ _) = r
     go (TyConAppCo r _ _) = r
     go (AppCo co1 _) = go co1
-    go (ForAllCoX _tcv _visL _visR _kco co) = go co
+    go (ForAllCo _tcv _visL _visR _kco co) = go co
     go (FunCo { fco_role = r }) = r
     go (CoVarCo cv) = coVarRole cv
     go (HoleCo h)   = coVarRole (coHoleCoVar h)

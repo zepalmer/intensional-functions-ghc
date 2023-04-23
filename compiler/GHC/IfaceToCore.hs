@@ -1491,9 +1491,9 @@ tcIfaceCo = go
     go (IfaceFunCo r w c1 c2)    = mkFunCoNoFTF r <$> go w <*> go c1 <*> go c2
     go (IfaceTyConAppCo r tc cs) = TyConAppCo r <$> tcIfaceTyCon tc <*> mapM go cs
     go (IfaceAppCo c1 c2)        = AppCo <$> go c1 <*> go c2
-    go (IfaceForAllCoY tv visL visR k c) = do { k' <- go k
+    go (IfaceForAllCo tv visL visR k c) = do { k' <- go k
                                       ; bindIfaceBndr tv $ \ tv' ->
-                                        ForAllCoX tv' visL visR k' <$> go c }
+                                        ForAllCo tv' visL visR k' <$> go c }
     go (IfaceCoVarCo n)          = CoVarCo <$> go_var n
     go (IfaceAxiomInstCo n i cs) = AxiomInstCo <$> tcIfaceCoAxiom n <*> pure i <*> mapM go cs
     go (IfaceUnivCo p r t1 t2)   = UnivCo <$> tcIfaceUnivCoProv p <*> pure r
