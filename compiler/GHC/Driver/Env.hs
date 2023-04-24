@@ -127,7 +127,7 @@ hsc_HUE = ue_currentHomeUnitEnv . hsc_unit_env
 hsc_HUG :: HscEnv -> HomeUnitGraph
 hsc_HUG = ue_home_unit_graph . hsc_unit_env
 
-hsc_all_home_unit_ids :: HscEnv -> Set.Set UnitId
+hsc_all_home_unit_ids :: HscEnv -> UnitIdSet
 hsc_all_home_unit_ids = unitEnv_keys . hsc_HUG
 
 hscUpdateHPT_lazy :: (HomePackageTable -> HomePackageTable) -> HscEnv -> HscEnv

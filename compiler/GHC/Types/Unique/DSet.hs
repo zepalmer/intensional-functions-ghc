@@ -32,6 +32,7 @@ module GHC.Types.Unique.DSet (
         isEmptyUniqDSet,
         lookupUniqDSet,
         uniqDSetToList,
+        uniqDSetToAscList,
         partitionUniqDSet,
         mapUniqDSet
     ) where
@@ -43,8 +44,11 @@ import GHC.Types.Unique.DFM
 import GHC.Types.Unique.Set
 import GHC.Types.Unique
 
+import GHC.Utils.Binary
+
 import Data.Coerce
 import Data.Data
+import Data.List (sort)
 
 -- See Note [UniqSet invariant] in GHC.Types.Unique.Set for why we want a newtype here.
 -- Beyond preserving invariants, we may also want to 'override' typeclass
@@ -120,6 +124,9 @@ lookupUniqDSet = lookupUDFM . getUniqDSet
 uniqDSetToList :: UniqDSet a -> [a]
 uniqDSetToList = eltsUDFM . getUniqDSet
 
+uniqDSetToAscList :: Ord a => UniqDSet a -> [a]
+uniqDSetToAscList = sort . uniqDSetToList
+
 partitionUniqDSet :: (a -> Bool) -> UniqDSet a -> (UniqDSet a, UniqDSet a)
 partitionUniqDSet p = coerce . partitionUDFM p . getUniqDSet
 
@@ -140,3 +147,7 @@ instance Outputable a => Outputable (UniqDSet a) where
 
 pprUniqDSet :: (a -> SDoc) -> UniqDSet a -> SDoc
 pprUniqDSet f = braces . pprWithCommas f . uniqDSetToList
+
+instance (Uniquable a, Binary a, Ord a) => Binary (UniqDSet a) where
+  put_ bh = put_ bh . uniqDSetToAscList
+  get  bh = mkUniqDSet <$> get bh

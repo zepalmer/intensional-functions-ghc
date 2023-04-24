@@ -74,6 +74,7 @@ import GHC.Types.Id
 import GHC.Types.HpcInfo
 import GHC.Types.PkgQual
 import GHC.Types.GREInfo (ConInfo(..))
+import GHC.Types.Unique.DSet
 
 import GHC.Unit
 import GHC.Unit.Module.Warnings
@@ -212,8 +213,8 @@ rnImports imports = do
     let merged_import_avail = clobberSourceImports imp_avails
     dflags <- getDynFlags
     let final_import_avail  =
-          merged_import_avail { imp_dep_direct_pkgs = S.fromList (implicitPackageDeps dflags)
-                                                        `S.union` imp_dep_direct_pkgs merged_import_avail}
+          merged_import_avail { imp_dep_direct_pkgs = mkUniqDSet (implicitPackageDeps dflags)
+                                                        `unionUniqDSets` imp_dep_direct_pkgs merged_import_avail}
     return (decls, rdr_env, final_import_avail, hpc_usage)
 
   where
@@ -480,7 +481,7 @@ renamePkgQual unit_env mn mb_pkg = case mb_pkg of
 -- | Calculate the 'ImportAvails' induced by an import of a particular
 -- interface, but without 'imp_mods'.
 calculateAvails :: HomeUnit
-                -> S.Set UnitId
+                -> UnitIdSet
                 -> ModIface
                 -> IsSafeImport
                 -> IsBootInterface
@@ -535,7 +536,7 @@ calculateAvails home_unit other_home_units iface mod_safe' want_boot imported_by
 
       -- Trusted packages are a lot like orphans.
       trusted_pkgs | mod_safe' = dep_trusted_pkgs deps
-                   | otherwise = S.empty
+                   | otherwise = emptyUniqDSet
 
 
       pkg = moduleUnit (mi_module iface)
@@ -548,11 +549,11 @@ calculateAvails home_unit other_home_units iface mod_safe' want_boot imported_by
         | isHomeUnit home_unit pkg = ptrust
         | otherwise = False
 
-      dependent_pkgs = if toUnitId pkg `S.member` other_home_units
-                        then S.empty
-                        else S.singleton ipkg
+      dependent_pkgs = if toUnitId pkg `elementOfUniqDSet` other_home_units
+                        then emptyUniqDSet
+                        else unitUniqDSet ipkg
 
-      direct_mods = mkModDeps $ if toUnitId pkg `S.member` other_home_units
+      direct_mods = mkModDeps $ if toUnitId pkg `elementOfUniqDSet` other_home_units
                       then S.singleton (moduleUnitId imp_mod, (GWIB (moduleName imp_mod) want_boot))
                       else S.empty
 

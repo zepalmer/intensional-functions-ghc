@@ -107,6 +107,7 @@ import GHC.Types.SourceFile
 import GHC.Types.SourceError
 import GHC.Types.SrcLoc
 import GHC.Types.Unique.Map
+import GHC.Types.Unique.DSet
 import GHC.Types.PkgQual
 
 import GHC.Unit
@@ -490,7 +491,7 @@ load how_much = loadWithCache noIfaceCache how_much
 
 mkBatchMsg :: HscEnv -> Messager
 mkBatchMsg hsc_env =
-  if length (hsc_all_home_unit_ids hsc_env) > 1
+  if sizeUniqDSet (hsc_all_home_unit_ids hsc_env) > 1
     -- This also displays what unit each module is from.
     then batchMultiMsg
     else batchMsg
@@ -1735,25 +1736,25 @@ downsweep hsc_env old_summaries excl_mods allow_dup_roots
 
 -- This function checks then important property that if both p and q are home units
 -- then any dependency of p, which transitively depends on q is also a home unit.
-checkHomeUnitsClosed ::  UnitEnv -> Set.Set UnitId -> [(UnitId, UnitId)] -> [DriverMessages]
+checkHomeUnitsClosed ::  UnitEnv -> UnitIdSet -> [(UnitId, UnitId)] -> [DriverMessages]
 -- Fast path, trivially closed.
 checkHomeUnitsClosed ue home_id_set home_imp_ids
-  | Set.size home_id_set == 1 = []
+  | sizeUniqDSet home_id_set == 1 = []
   | otherwise =
-  let res = foldMap loop home_imp_ids
+  let res = foldr (\ids acc -> unionUniqDSets acc $ loop ids) emptyUniqDSet home_imp_ids
   -- Now check whether everything which transitively depends on a home_unit is actually a home_unit
   -- These units are the ones which we need to load as home packages but failed to do for some reason,
   -- it's a bug in the tool invoking GHC.
-      bad_unit_ids = Set.difference res home_id_set
-  in if Set.null bad_unit_ids
+      bad_unit_ids = res `minusUniqDSet` home_id_set
+  in if isEmptyUniqDSet bad_unit_ids
         then []
-        else [singleMessage $ mkPlainErrorMsgEnvelope rootLoc $ DriverHomePackagesNotClosed (Set.toList bad_unit_ids)]
+        else [singleMessage $ mkPlainErrorMsgEnvelope rootLoc $ DriverHomePackagesNotClosed (uniqDSetToAscList bad_unit_ids)]
 
   where
     rootLoc = mkGeneralSrcSpan (fsLit "<command line>")
     -- TODO: This could repeat quite a bit of work but I struggled to write this function.
     -- Which units transitively depend on a home unit
-    loop :: (UnitId, UnitId) -> Set.Set UnitId -- The units which transitively depend on a home unit
+    loop :: (UnitId, UnitId) -> UnitIdSet -- The units which transitively depend on a home unit
     loop (from_uid, uid) =
       let us = ue_findHomeUnitEnv from_uid ue in
       let um = unitInfoMap (homeUnitEnv_units us) in
@@ -1761,20 +1762,21 @@ checkHomeUnitsClosed ue home_id_set home_imp_ids
         Nothing -> pprPanic "uid not found" (ppr uid)
         Just ui ->
           let depends = unitDepends ui
-              home_depends = Set.fromList depends `Set.intersection` home_id_set
-              other_depends = Set.fromList depends `Set.difference` home_id_set
+              home_depends  = mkUniqDSet depends `intersectUniqDSets` home_id_set
+              other_depends = mkUniqDSet depends `minusUniqDSet` home_id_set
           in
             -- Case 1: The unit directly depends on a home_id
-            if not (null home_depends)
+            if not (isEmptyUniqDSet home_depends)
               then
-                let res = foldMap (loop . (from_uid,)) other_depends
-                in Set.insert uid res
+                let res :: UnitIdSet
+                    res = foldr (\ide acc -> acc `unionUniqDSets` loop (from_uid, ide)) emptyUniqDSet $ uniqDSetToList other_depends
+                in addOneToUniqDSet res uid
              -- Case 2: Check the rest of the dependencies, and then see if any of them depended on
               else
-                let res = foldMap (loop . (from_uid,)) other_depends
+                let res = foldr (\ide acc -> acc `unionUniqDSets` loop (from_uid, ide)) emptyUniqDSet $ uniqDSetToList other_depends
                 in
-                  if not (Set.null res)
-                    then Set.insert uid res
+                  if not (isEmptyUniqDSet res)
+                    then addOneToUniqDSet res uid
                     else res
 
 -- | Update the every ModSummary that is depended on

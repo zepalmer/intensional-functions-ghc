@@ -28,6 +28,7 @@ import GHC.Unit.Module.Imported
 import GHC.Unit.Module
 import GHC.Unit.Home
 import GHC.Unit.State
+import GHC.Types.Unique.DSet
 
 import GHC.Utils.Fingerprint
 import GHC.Utils.Binary
@@ -53,13 +54,13 @@ data Dependencies = Deps
       -- ^ All home-package modules which are directly imported by this one.
       -- This may include modules from other units when using multiple home units
 
-   , dep_direct_pkgs :: Set UnitId
+   , dep_direct_pkgs :: UnitIdSet
       -- ^ All packages directly imported by this module
       -- I.e. packages to which this module's direct imports belong.
       -- Does not include other home units when using multiple home units.
       -- Modules from these units will go in `dep_direct_mods`
 
-   , dep_plugin_pkgs :: Set UnitId
+   , dep_plugin_pkgs :: UnitIdSet
       -- ^ All units needed for plugins
 
     ------------------------------------
@@ -69,7 +70,7 @@ data Dependencies = Deps
     -- ^ Transitive closure of hsig files in the home package
 
 
-   , dep_trusted_pkgs :: Set UnitId
+   , dep_trusted_pkgs :: UnitIdSet
       -- Packages which we are required to trust
       -- when the module is imported as a safe import
       -- (Safe Haskell). See Note [Tracking Trust Transitively] in GHC.Rename.Names
@@ -110,7 +111,7 @@ data Dependencies = Deps
 mkDependencies :: HomeUnit -> Module -> ImportAvails -> [Module] -> Dependencies
 mkDependencies home_unit mod imports plugin_mods =
   let (home_plugins, external_plugins) = partition (isHomeUnit home_unit . moduleUnit) plugin_mods
-      plugin_units = Set.fromList (map (toUnitId . moduleUnit) external_plugins)
+      plugin_units = mkUniqDSet (map (toUnitId . moduleUnit) external_plugins)
       all_direct_mods = foldr (\mn m -> extendInstalledModuleEnv m mn (GWIB (moduleName mn) NotBoot))
                               (imp_direct_dep_mods imports)
                               (map (fmap toUnitId) home_plugins)
@@ -197,12 +198,12 @@ instance Binary Dependencies where
 
 noDependencies :: Dependencies
 noDependencies = Deps
-  { dep_direct_mods  = Set.empty
-  , dep_direct_pkgs  = Set.empty
-  , dep_plugin_pkgs  = Set.empty
+  { dep_direct_mods  = mempty
+  , dep_direct_pkgs  = emptyUniqDSet
+  , dep_plugin_pkgs  = emptyUniqDSet
   , dep_sig_mods     = []
-  , dep_boot_mods    = Set.empty
-  , dep_trusted_pkgs = Set.empty
+  , dep_boot_mods    = mempty
+  , dep_trusted_pkgs = emptyUniqDSet
   , dep_orphs        = []
   , dep_finsts       = []
   }
@@ -220,11 +221,11 @@ pprDeps unit_state (Deps { dep_direct_mods = dmods
   = pprWithUnitState unit_state $
     vcat [text "direct module dependencies:"  <+> ppr_set ppr_mod dmods,
           text "boot module dependencies:"    <+> ppr_set ppr bmods,
-          text "direct package dependencies:" <+> ppr_set ppr pkgs,
-          text "plugin package dependencies:" <+> ppr_set ppr plgns,
-          if null tps
+          text "direct package dependencies:" <+> ppr_unitIdSet ppr pkgs,
+          text "plugin package dependencies:" <+> ppr_unitIdSet ppr plgns,
+          if isEmptyUniqDSet tps
             then empty
-            else text "trusted package dependencies:" <+> ppr_set ppr tps,
+            else text "trusted package dependencies:" <+> ppr_unitIdSet ppr tps,
           text "orphans:" <+> fsep (map ppr orphs),
           text "family instance modules:" <+> fsep (map ppr finsts)
         ]
@@ -234,6 +235,9 @@ pprDeps unit_state (Deps { dep_direct_mods = dmods
 
     ppr_set :: Outputable a => (a -> SDoc) -> Set a -> SDoc
     ppr_set w = fsep . fmap w . Set.toAscList
+
+    ppr_unitIdSet :: (UnitId -> SDoc) -> UnitIdSet -> SDoc
+    ppr_unitIdSet w = fsep . fmap w . sort . uniqDSetToList
 
 -- | Records modules for which changes may force recompilation of this module
 -- See wiki: https://gitlab.haskell.org/ghc/ghc/wikis/commentary/compiler/recompilation-avoidance
@@ -491,7 +495,7 @@ data ImportAvails
         imp_direct_dep_mods :: InstalledModuleEnv ModuleNameWithIsBoot,
           -- ^ Home-package modules directly imported by the module being compiled.
 
-        imp_dep_direct_pkgs :: Set UnitId,
+        imp_dep_direct_pkgs :: UnitIdSet,
           -- ^ Packages directly needed by the module being compiled
 
         imp_trust_own_pkg :: Bool,
@@ -502,7 +506,7 @@ data ImportAvails
 
         -- Transitive information below here
 
-        imp_trust_pkgs :: Set UnitId,
+        imp_trust_pkgs :: UnitIdSet,
           -- ^ This records the
           -- packages the current module needs to trust for Safe Haskell
           -- compilation to succeed. A package is required to be trusted if

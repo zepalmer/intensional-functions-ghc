@@ -81,6 +81,7 @@ import GHC.Utils.Misc (HasDebugCallStack)
 import GHC.Driver.Session
 import GHC.Utils.Outputable
 import GHC.Utils.Panic (pprPanic)
+import GHC.Types.Unique.DSet
 import GHC.Unit.Module.ModIface
 import GHC.Unit.Module
 import qualified Data.Set as Set
@@ -339,8 +340,8 @@ unitEnv_lookup_maybe u env = Map.lookup u (unitEnv_graph env)
 unitEnv_lookup :: UnitEnvGraphKey -> UnitEnvGraph v -> v
 unitEnv_lookup u env = fromJust $ unitEnv_lookup_maybe u env
 
-unitEnv_keys :: UnitEnvGraph v -> Set.Set UnitEnvGraphKey
-unitEnv_keys env = Map.keysSet (unitEnv_graph env)
+unitEnv_keys :: UnitEnvGraph v -> UnitIdSet
+unitEnv_keys env = mkUniqDSet $ Map.keys (unitEnv_graph env)
 
 unitEnv_elts :: UnitEnvGraph v -> [(UnitEnvGraphKey, v)]
 unitEnv_elts env = Map.toList (unitEnv_graph env)
@@ -443,7 +444,7 @@ ue_unitHomeUnit_maybe uid ue_env =
 ue_unitHomeUnit :: UnitId -> UnitEnv -> HomeUnit
 ue_unitHomeUnit uid ue_env = homeUnitEnv_unsafeHomeUnit $ ue_findHomeUnitEnv uid ue_env
 
-ue_all_home_unit_ids :: UnitEnv -> Set.Set UnitId
+ue_all_home_unit_ids :: UnitEnv -> UnitIdSet
 ue_all_home_unit_ids = unitEnv_keys . ue_home_unit_graph
 -- -------------------------------------------------------
 -- Query and modify the currently active unit

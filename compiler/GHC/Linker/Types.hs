@@ -37,7 +37,7 @@ module GHC.Linker.Types
 where
 
 import GHC.Prelude
-import GHC.Unit                ( UnitId, Module )
+import GHC.Unit                ( UnitId, Module, UnitIdSet )
 import GHC.ByteCode.Types      ( ItblEnv, AddrEnv, CompiledByteCode )
 import GHC.Fingerprint.Type    ( Fingerprint )
 import GHCi.RemoteTypes        ( ForeignHValue )
@@ -53,7 +53,6 @@ import Control.Concurrent.MVar
 import Data.Time               ( UTCTime )
 import Data.Maybe
 import GHC.Unit.Module.Env
-import GHC.Types.Unique.DSet
 import GHC.Types.Unique.DFM
 import GHC.Unit.Module.WholeCoreBindings
 
@@ -146,7 +145,7 @@ data LoadedPkgInfo
   { loaded_pkg_uid         :: !UnitId
   , loaded_pkg_hs_objs     :: ![LibrarySpec]
   , loaded_pkg_non_hs_objs :: ![LibrarySpec]
-  , loaded_pkg_trans_deps  :: UniqDSet UnitId
+  , loaded_pkg_trans_deps  :: UnitIdSet
   }
 
 instance Outputable LoadedPkgInfo where

@@ -395,6 +395,7 @@ import GHC.Types.Name.Ppr
 import GHC.Types.TypeEnv
 import GHC.Types.BreakInfo
 import GHC.Types.PkgQual
+import GHC.Types.Unique.DSet
 
 import GHC.Unit
 import GHC.Unit.Env
@@ -418,8 +419,6 @@ import Data.Typeable    ( Typeable )
 import Data.Word        ( Word8 )
 
 import qualified Data.Map.Strict as Map
-import Data.Set (Set)
-import qualified Data.Set as S
 import qualified Data.Sequence as Seq
 
 import System.Directory
@@ -604,7 +603,7 @@ setSessionDynFlags dflags0 = do
   logger <- getLogger
   dflags <- checkNewDynFlags logger dflags0
   let all_uids = hsc_all_home_unit_ids hsc_env
-  case S.toList all_uids of
+  case uniqDSetToList all_uids of
     [uid] -> do
       setUnitDynFlagsNoCheck uid dflags
       modifySession (hscUpdateLoggerFlags . hscSetActiveUnitId (homeUnitId_ dflags))
@@ -1379,7 +1378,7 @@ data ModuleInfo = ModuleInfo {
 -- | Request information about a loaded 'Module'
 getModuleInfo :: GhcMonad m => Module -> m (Maybe ModuleInfo)  -- XXX: Maybe X
 getModuleInfo mdl = withSession $ \hsc_env -> do
-  if moduleUnitId mdl `S.member` hsc_all_home_unit_ids hsc_env
+  if moduleUnitId mdl `elementOfUniqDSet` hsc_all_home_unit_ids hsc_env
         then liftIO $ getHomeModuleInfo hsc_env mdl
         else liftIO $ getPackageModuleInfo hsc_env mdl
 
@@ -1756,7 +1755,7 @@ isModuleTrusted m = withSession $ \hsc_env ->
     liftIO $ hscCheckSafe hsc_env m noSrcSpan
 
 -- | Return if a module is trusted and the pkgs it depends on to be trusted.
-moduleTrustReqs :: GhcMonad m => Module -> m (Bool, Set UnitId)
+moduleTrustReqs :: GhcMonad m => Module -> m (Bool, UnitIdSet)
 moduleTrustReqs m = withSession $ \hsc_env ->
     liftIO $ hscGetSafe hsc_env m noSrcSpan
 

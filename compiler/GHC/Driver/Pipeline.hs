@@ -108,6 +108,7 @@ import GHC.Types.Target
 import GHC.Types.SrcLoc
 import GHC.Types.SourceFile
 import GHC.Types.SourceError
+import GHC.Types.Unique.DSet
 
 import GHC.Unit
 import GHC.Unit.Env
@@ -125,7 +126,7 @@ import Control.Monad
 import qualified Control.Monad.Catch as MC (handle)
 import Data.Maybe
 import Data.Either      ( partitionEithers )
-import qualified Data.Set as Set
+import Data.List        ( sort )
 
 import Data.Time        ( getCurrentTime )
 import GHC.Iface.Recomp
@@ -408,8 +409,8 @@ link' logger tmpfs dflags unit_env batch_attempt_linking mHscMessager hpt
             home_mod_infos = eltsHpt hpt
 
             -- the packages we depend on
-            pkg_deps  = Set.toList
-                          $ Set.unions
+            pkg_deps  = uniqDSetToList
+                          $ unionManyUniqDSets
                           $ fmap (dep_direct_pkgs . mi_deps . hm_iface)
                           $ home_mod_infos
 
@@ -418,7 +419,7 @@ link' logger tmpfs dflags unit_env batch_attempt_linking mHscMessager hpt
 
         debugTraceMsg logger 3 (text "link: hmi ..." $$ vcat (map (ppr . mi_module . hm_iface) home_mod_infos))
         debugTraceMsg logger 3 (text "link: linkables are ..." $$ vcat (map ppr linkables))
-        debugTraceMsg logger 3 (text "link: pkg deps are ..." $$ vcat (map ppr pkg_deps))
+        debugTraceMsg logger 3 (text "link: pkg deps are ..." $$ vcat (map ppr $ sort pkg_deps))
 
         -- check for the -no-link flag
         if isNoLink (ghcLink dflags)

@@ -59,6 +59,7 @@ import GHC.Types.SrcLoc
 import GHC.Types.Unique.Set
 import GHC.Types.Fixity.Env
 import GHC.Types.Unique.Map
+import GHC.Types.Unique.DSet
 import GHC.Unit.External
 import GHC.Unit.Finder
 import GHC.Unit.State
@@ -617,8 +618,8 @@ checkDependencies hsc_env summary iface
    all_home_units = hsc_all_home_unit_ids hsc_env
    units         = hsc_units hsc_env
    prev_dep_mods = map (second gwib_mod) $ Set.toAscList $ dep_direct_mods (mi_deps iface)
-   prev_dep_pkgs = Set.toAscList (Set.union (dep_direct_pkgs (mi_deps iface))
-                                            (dep_plugin_pkgs (mi_deps iface)))
+   prev_dep_pkgs = uniqDSetToAscList (unionUniqDSets (dep_direct_pkgs (mi_deps iface))
+                                     (dep_plugin_pkgs (mi_deps iface)))
 
    implicit_deps = map (fsLit "Implicit",) (implicitPackageDeps dflags)
 
@@ -633,7 +634,7 @@ checkDependencies hsc_env summary iface
 
 
    classify _ (Found _ mod)
-    | (toUnitId $ moduleUnit mod) `elem` all_home_units = Right (Left ((toUnitId $ moduleUnit mod), moduleName mod))
+    | (toUnitId $ moduleUnit mod) `elementOfUniqDSet` all_home_units = Right (Left ((toUnitId $ moduleUnit mod), moduleName mod))
     | otherwise = Right (Right (moduleNameFS (moduleName mod), toUnitId $ moduleUnit mod))
    classify reason _ = Left (RecompBecause reason)
 

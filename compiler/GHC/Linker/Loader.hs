@@ -324,20 +324,20 @@ loadCmdLineLibs interp hsc_env = do
 loadCmdLineLibs' :: Interp -> HscEnv -> LoaderState -> IO LoaderState
 loadCmdLineLibs' interp hsc_env pls = snd <$>
     foldM
-      (\(done', pls') cur_uid ->  load done' cur_uid pls')
-      (Set.empty, pls)
-      (hsc_all_home_unit_ids hsc_env)
+      (\(done', pls') cur_uid -> load done' cur_uid pls')
+      (emptyUniqDSet, pls)
+      (uniqDSetToList $ hsc_all_home_unit_ids hsc_env)
 
   where
-    load :: Set.Set UnitId -> UnitId -> LoaderState -> IO (Set.Set UnitId, LoaderState)
-    load done uid pls | uid `Set.member` done = return (done, pls)
+    load :: UnitIdSet -> UnitId -> LoaderState -> IO (UnitIdSet, LoaderState)
+    load done uid pls | uid `elementOfUniqDSet` done = return (done, pls)
     load done uid pls = do
       let hsc' = hscSetActiveUnitId uid hsc_env
       -- Load potential dependencies first
       (done', pls') <- foldM (\(done', pls') uid -> load done' uid pls') (done, pls)
-                          (homeUnitDepends (hsc_units hsc'))
+                             (homeUnitDepends (hsc_units hsc'))
       pls'' <- loadCmdLineLibs'' interp hsc' pls'
-      return $ (Set.insert uid done', pls'')
+      return $ (addOneToUniqDSet done' uid, pls'')
 
 loadCmdLineLibs''
   :: Interp
@@ -685,7 +685,7 @@ getLinkDeps :: HscEnv
             -> Maybe FilePath                   -- replace object suffixes?
             -> SrcSpan                          -- for error messages
             -> [Module]                         -- If you need these
-            -> IO ([Linkable], [Linkable], [UnitId], UniqDSet UnitId)     -- ... then link these first
+            -> IO ([Linkable], [Linkable], [UnitId], UnitIdSet)     -- ... then link these first
             -- The module and package dependencies for the needed modules are returned.
             -- See Note [Object File Dependencies]
 -- Fails with an IO exception if it can't find enough files
@@ -737,7 +737,7 @@ getLinkDeps hsc_env pls replace_osuf span mods
 
     -- It is also a matter of correctness to use the module graph so that dependencies between home units
     -- is resolved correctly.
-    make_deps_loop :: (UniqDSet UnitId, Set.Set NodeKey) -> [ModNodeKeyWithUid] -> (UniqDSet UnitId, Set.Set NodeKey)
+    make_deps_loop :: (UnitIdSet, Set.Set NodeKey) -> [ModNodeKeyWithUid] -> (UnitIdSet, Set.Set NodeKey)
     make_deps_loop found [] = found
     make_deps_loop found@(found_units, found_mods) (nk:nexts)
       | NodeKey_Module nk `Set.member` found_mods = make_deps_loop found nexts
@@ -766,7 +766,7 @@ getLinkDeps hsc_env pls replace_osuf span mods
                       HsBootFile -> link_boot_mod_error (mi_module iface)
                       _ -> return $ Just (mi_module iface)
 
-          in (mkUniqDSet $ Set.toList $ dep_direct_pkgs (mi_deps iface),) <$>  mmod
+          in (dep_direct_pkgs (mi_deps iface),) <$>  mmod
         Nothing ->
           let err = text "getLinkDeps: Home module not loaded" <+> ppr (gwib_mod gwib) <+> ppr uid
           in throwGhcExceptionIO (ProgramError (showSDoc dflags err))
@@ -780,9 +780,9 @@ getLinkDeps hsc_env pls replace_osuf span mods
        -- dependencies of that.  Hence we need to traverse the dependency
        -- tree recursively.  See bug #936, testcase ghci/prog007.
     follow_deps :: [Module]             -- modules to follow
-                -> UniqDSet Module         -- accum. module dependencies
-                -> UniqDSet UnitId          -- accum. package dependencies
-                -> IO ([Module], UniqDSet UnitId) -- result
+                -> UniqDSet Module      -- accum. module dependencies
+                -> UnitIdSet            -- accum. package dependencies
+                -> IO ([Module], UnitIdSet) -- result
     follow_deps []     acc_mods acc_pkgs
         = return (uniqDSetToList acc_mods, acc_pkgs)
     follow_deps (mod:mods) acc_mods acc_pkgs
@@ -814,7 +814,7 @@ getLinkDeps hsc_env pls replace_osuf span mods
             acc_mods'  = case hsc_home_unit_maybe hsc_env of
                           Nothing -> acc_mods
                           Just home_unit -> addListToUniqDSet acc_mods (mod : map (mkHomeModule home_unit) mod_deps)
-            acc_pkgs'  = addListToUniqDSet acc_pkgs (Set.toList pkg_deps)
+            acc_pkgs'  = addListToUniqDSet acc_pkgs (uniqDSetToList pkg_deps)
 
           case hsc_home_unit_maybe hsc_env of
             Just home_unit | isHomeUnit home_unit pkg ->  follow_deps (mod_deps' ++ mods)
