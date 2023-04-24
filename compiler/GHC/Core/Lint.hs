@@ -1492,8 +1492,9 @@ lintCaseExpr scrut var alt_ty alts =
 
      ; lintBinder CaseBind var $ \_ ->
        do { -- Check the alternatives
-          ; alt_ues <- mapM (lintCoreAlt var scrut_ty scrut_mult alt_ty) alts
-          ; let case_ue = (scaleUE scrut_mult scrut_ue) `addUE` supUEs alt_ues
+          ; let extra_ue = scaleUE scrut_mult scrut_ue
+          ; alt_ues <- mapM (lintCoreAlt var scrut_ty scrut_mult alt_ty extra_ue) alts
+          ; let case_ue = supUEs alt_ues
           ; checkCaseAlts e scrut_ty alts
           ; return (alt_ty, case_ue) } }
 
@@ -1548,25 +1549,26 @@ lintCoreAlt :: Var              -- Case binder
             -> LintedType       -- Type of scrutinee
             -> Mult             -- Multiplicity of scrutinee
             -> LintedType       -- Type of the alternative
+            -> UsageEnv         -- The usage of the scrutinee (added to non-DEFAULT branches)
             -> CoreAlt
             -> LintM UsageEnv
 -- If you edit this function, you may need to update the GHC formalism
 -- See Note [GHC Formalism]
-lintCoreAlt _ _ _ alt_ty (Alt DEFAULT args rhs) =
+lintCoreAlt _ _ _ alt_ty _ (Alt DEFAULT args rhs) =
   do { lintL (null args) (mkDefaultArgsMsg args)
      ; lintAltExpr rhs alt_ty }
 
-lintCoreAlt _case_bndr scrut_ty _ alt_ty (Alt (LitAlt lit) args rhs)
+lintCoreAlt _case_bndr scrut_ty _ alt_ty extra_ue (Alt (LitAlt lit) args rhs)
   | litIsLifted lit
   = failWithL integerScrutinisedMsg
   | otherwise
   = do { lintL (null args) (mkDefaultArgsMsg args)
        ; ensureEqTys lit_ty scrut_ty (mkBadPatMsg lit_ty scrut_ty)
-       ; lintAltExpr rhs alt_ty }
+       ; addUE extra_ue <$> lintAltExpr rhs alt_ty }
   where
     lit_ty = literalType lit
 
-lintCoreAlt case_bndr scrut_ty _scrut_mult alt_ty alt@(Alt (DataAlt con) args rhs)
+lintCoreAlt case_bndr scrut_ty _scrut_mult alt_ty extra_ue alt@(Alt (DataAlt con) args rhs)
   | isNewTyCon (dataConTyCon con)
   = zeroUE <$ addErrL (mkNewTyDataConAltMsg scrut_ty alt)
   | Just (tycon, tycon_arg_tys) <- splitTyConApp_maybe scrut_ty
@@ -1587,7 +1589,7 @@ lintCoreAlt case_bndr scrut_ty _scrut_mult alt_ty alt@(Alt (DataAlt con) args rh
       {
         rhs_ue <- lintAltExpr rhs alt_ty
       ; rhs_ue' <- addLoc (CasePat alt) (lintAltBinders rhs_ue case_bndr scrut_ty con_payload_ty (zipEqual "lintCoreAlt" multiplicities  args'))
-      ; return $ deleteUE rhs_ue' case_bndr
+      ; return $ addUE extra_ue $ deleteUE rhs_ue' case_bndr
       }
    }
 
