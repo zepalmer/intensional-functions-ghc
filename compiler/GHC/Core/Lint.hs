@@ -1491,6 +1491,7 @@ lintCaseExpr scrut var alt_ty alts =
        -- See GHC.Core Note [Case expression invariants] item (7)
 
      ; lintBinder CaseBind var $ \_ ->
+       addAliasUE var scrut_ue $
        do { -- Check the alternatives
           ; let extra_ue = scaleUE scrut_mult scrut_ue
           ; alt_ues <- mapM (lintCoreAlt var scrut_ty scrut_mult alt_ty extra_ue) alts
