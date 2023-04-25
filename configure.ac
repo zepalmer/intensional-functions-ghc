@@ -967,6 +967,13 @@ AC_DEFINE_UNQUOTED([RTS_LINKER_USE_MMAP], [$RtsLinkerUseMmap],
                    [Use mmap in the runtime linker])
 
 
+# TODO: Unregisterised, TablesNextToCode
+TablesNextToCode=YES
+AC_SUBST([TablesNextToCode])
+Unregisterised=YES
+AC_SUBST([Unregisterised])
+
+
 GHC_ADJUSTORS_METHOD([Target])
 AC_SUBST([UseLibffiForAdjustors])
 

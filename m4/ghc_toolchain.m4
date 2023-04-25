@@ -36,6 +36,14 @@ AC_DEFUN([FIND_GHC_TOOLCHAIN],
     echo "--readelf=$READELF" >> acargs
     ADD_GHC_TOOLCHAIN_ARG([readelf-opt], [$READELFFLAGS])
 
+    if test "$Unregisterised" = "YES"; then
+        echo "--enable-unregisterised" >> acargs
+    else
+        echo "--disable-unregisterised" >> acargs
+    fi
+
+    # TODO: TNTC
+
     (
         set --
         while read -r arg; do
