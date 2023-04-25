@@ -302,28 +302,6 @@ dnl ** Do an unregisterised build?
 dnl --------------------------------------------------------------
 
 GHC_UNREGISTERISED
-AC_SUBST(Unregisterised)
-
-dnl ** Do a build with tables next to code?
-dnl --------------------------------------------------------------
-
-GHC_TABLES_NEXT_TO_CODE
-if test x"$TablesNextToCode" = xYES; then
-   AC_DEFINE([TABLES_NEXT_TO_CODE], [1], [Define to 1 if info tables are laid out next to code])
-fi
-AC_SUBST(TablesNextToCode)
-
-dnl ** Does target have runtime linker support?
-dnl --------------------------------------------------------------
-case "$target" in
-    powerpc64-*|powerpc64le-*|powerpc-ibm-aix*|s390x-ibm-linux|riscv64-*|wasm*|javascript-*|loongarch64-*)
-        TargetHasRTSLinker=NO
-        ;;
-    *)
-        TargetHasRTSLinker=YES
-        ;;
-esac
-AC_SUBST(TargetHasRTSLinker)
 
 # Requires FPTOOLS_SET_PLATFORMS_VARS to be run first.
 FP_FIND_ROOT
@@ -332,6 +310,7 @@ FP_FIND_ROOT
 if test "$HostOS" = "mingw32" -a "$EnableDistroToolchain" = "NO"; then
     FP_SETUP_WINDOWS_TOOLCHAIN
 else
+    # TODO
     AC_PATH_TOOL([CC],[gcc], [clang])
     AC_PATH_TOOL([CXX],[g++], [clang++])
     AC_PATH_TOOL([NM],[nm])
@@ -355,15 +334,6 @@ else
             HAVE_GENLIB=True
         fi
     fi
-fi
-
-if test "$HostOS" = "mingw32"; then
-    DllWrapCmd="$DllWrap"
-    WindresCmd="$Windres"
-    AC_SUBST([DllWrapCmd])
-    AC_SUBST([WindresCmd])
-    AC_SUBST([GenlibCmd])
-    AC_SUBST([HAVE_GENLIB])
 fi
 
 FP_ICONV
@@ -476,22 +446,6 @@ FP_SET_CFLAGS_C99([CC],[CONF_CC_OPTS_STAGE2],[CONF_CPP_OPTS_STAGE2])
 dnl ** Which ld to use
 dnl --------------------------------------------------------------
 AC_ARG_VAR(LD,[Use as the path to ld. See also --disable-ld-override.])
-FIND_LD([$target],[GccUseLdOpt])
-FIND_MERGE_OBJECTS()
-CONF_GCC_LINKER_OPTS_STAGE1="$CONF_GCC_LINKER_OPTS_STAGE1 $GccUseLdOpt"
-CONF_GCC_LINKER_OPTS_STAGE2="$CONF_GCC_LINKER_OPTS_STAGE2 $GccUseLdOpt"
-LdCmd="$LD"
-CFLAGS="$CFLAGS $GccUseLdOpt"
-AC_SUBST([LdCmd])
-
-FP_PROG_LD_IS_GNU
-FP_PROG_LD_BUILD_ID
-FP_PROG_LD_NO_COMPACT_UNWIND
-FP_PROG_LD_FILELIST
-
-dnl ** Which nm to use?
-dnl --------------------------------------------------------------
-FP_FIND_NM
 
 dnl ** Which objdump to use?
 dnl --------------------------------------------------------------
@@ -505,15 +459,6 @@ esac
 
 ObjdumpCmd="$OBJDUMP"
 AC_SUBST([ObjdumpCmd])
-
-dnl ** Which ranlib to use?
-dnl --------------------------------------------------------------
-AC_PROG_RANLIB
-if test "$RANLIB" = ":"; then
-    AC_MSG_ERROR([cannot find ranlib in your PATH])
-fi
-RanlibCmd="$RANLIB"
-AC_SUBST([RanlibCmd])
 
 dnl ** which strip to use?
 dnl --------------------------------------------------------------
@@ -635,83 +580,11 @@ AS_IF([test x"$CcLlvmBackend" = x"YES"],
   [AC_DEFINE([CC_LLVM_BACKEND], [1], [Define (to 1) if C compiler has an LLVM back end])])
 AC_SUBST(CcLlvmBackend)
 
-FPTOOLS_SET_C_LD_FLAGS([target],[CFLAGS],[LDFLAGS],[IGNORE_LINKER_LD_FLAGS],[CPPFLAGS])
-FPTOOLS_SET_C_LD_FLAGS([build],[CONF_CC_OPTS_STAGE0],[CONF_GCC_LINKER_OPTS_STAGE0],[CONF_LD_LINKER_OPTS_STAGE0],[CONF_CPP_OPTS_STAGE0])
-FPTOOLS_SET_C_LD_FLAGS([target],[CONF_CC_OPTS_STAGE1],[CONF_GCC_LINKER_OPTS_STAGE1],[CONF_LD_LINKER_OPTS_STAGE1],[CONF_CPP_OPTS_STAGE1])
-FPTOOLS_SET_C_LD_FLAGS([target],[CONF_CC_OPTS_STAGE2],[CONF_GCC_LINKER_OPTS_STAGE2],[CONF_LD_LINKER_OPTS_STAGE2],[CONF_CPP_OPTS_STAGE2])
-# Stage 3 won't be supported by cross-compilation
+FIND_GHC_TOOLCHAIN
 
-FP_LD_NO_FIXUP_CHAINS([target], [LDFLAGS])
-FP_LD_NO_FIXUP_CHAINS([build], [CONF_GCC_LINKER_OPTS_STAGE0])
-FP_LD_NO_FIXUP_CHAINS([target], [CONF_GCC_LINKER_OPTS_STAGE1])
-FP_LD_NO_FIXUP_CHAINS([target], [CONF_GCC_LINKER_OPTS_STAGE2])
-
-FP_LD_SUPPORTS_RESPONSE_FILES
-
-GHC_LLVM_TARGET_SET_VAR
-# we intend to pass trough --targets to llvm as is.
-LLVMTarget_CPP=`    echo "$LlvmTarget"`
-AC_SUBST(LLVMTarget_CPP)
-# The target is substituted into the distrib/configure.ac file
-AC_SUBST(LlvmTarget)
-
-dnl ** See whether cc supports --target=<triple> and set
-dnl CONF_CC_OPTS_STAGE[012] accordingly.
-FP_CC_SUPPORTS_TARGET([$CC_STAGE0], [CONF_CC_OPTS_STAGE0], [CONF_CXX_OPTS_STAGE0], [CONF_GCC_LINKER_OPTS_STAGE0])
-FP_CC_SUPPORTS_TARGET([$CC], [CONF_CC_OPTS_STAGE1], [CONF_CXX_OPTS_STAGE1], [CONF_GCC_LINKER_OPTS_STAGE1])
-FP_CC_SUPPORTS_TARGET([$CC], [CONF_CC_OPTS_STAGE2], [CONF_CXX_OPTS_STAGE2], [CONF_GCC_LINKER_OPTS_STAGE2])
-
-# See rules/distdir-way-opts.mk for details.
-# Flags passed to the C compiler
-AC_SUBST(CONF_CC_OPTS_STAGE0)
-AC_SUBST(CONF_CC_OPTS_STAGE1)
-AC_SUBST(CONF_CC_OPTS_STAGE2)
-# Flags passed to the C compiler when we ask it to link
-AC_SUBST(CONF_GCC_LINKER_OPTS_STAGE0)
-AC_SUBST(CONF_GCC_LINKER_OPTS_STAGE1)
-AC_SUBST(CONF_GCC_LINKER_OPTS_STAGE2)
-# Flags passed to the linker when we ask it to link
-AC_SUBST(CONF_LD_LINKER_OPTS_STAGE0)
-AC_SUBST(CONF_LD_LINKER_OPTS_STAGE1)
-AC_SUBST(CONF_LD_LINKER_OPTS_STAGE2)
-# Flags passed to the C preprocessor
-AC_SUBST(CONF_CPP_OPTS_STAGE0)
-AC_SUBST(CONF_CPP_OPTS_STAGE1)
-AC_SUBST(CONF_CPP_OPTS_STAGE2)
-# Flags passed to the Haskell compiler
-AC_SUBST(CONF_HC_OPTS_STAGE0)
-AC_SUBST(CONF_HC_OPTS_STAGE1)
-AC_SUBST(CONF_HC_OPTS_STAGE2)
-
-dnl Identify C++ standard library flavour and location only when _not_ compiling
-dnl the JS backend. The JS backend uses emscripten to wrap c++ utilities which
-dnl fails this check, so we avoid it when compiling to JS.
-if test "$TargetOS" != "ghcjs"; then
-   FP_FIND_CXX_STD_LIB
-fi
+dnl Identify C++ standard library flavour and location
+FP_FIND_CXX_STD_LIB
 AC_CONFIG_FILES([mk/system-cxx-std-lib-1.0.conf])
-
-dnl ** Set up the variables for the platform in the settings file.
-dnl May need to use gcc to find platform details.
-dnl --------------------------------------------------------------
-FPTOOLS_SET_HASKELL_PLATFORM_VARS([Build])
-
-FPTOOLS_SET_HASKELL_PLATFORM_VARS([Host])
-AC_SUBST(HaskellHostArch)
-AC_SUBST(HaskellHostOs)
-
-FPTOOLS_SET_HASKELL_PLATFORM_VARS([Target])
-AC_SUBST(HaskellTargetArch)
-AC_SUBST(HaskellTargetOs)
-
-GHC_SUBSECTIONS_VIA_SYMBOLS
-AC_SUBST(TargetHasSubsectionsViaSymbols)
-
-GHC_IDENT_DIRECTIVE
-AC_SUBST(TargetHasIdentDirective)
-
-GHC_GNU_NONEXEC_STACK
-AC_SUBST(TargetHasGnuNonexecStack)
 
 dnl ** figure out how to do context diffs
 FP_PROG_CONTEXT_DIFF
@@ -721,11 +594,6 @@ dnl a darcs repo, it might not be (see bug #978).
 chmod +x install-sh
 dnl ** figure out how to do a BSD-ish install
 AC_PROG_INSTALL
-
-dnl ** how to invoke `ar' and `ranlib'
-FP_PROG_AR_SUPPORTS_ATFILE
-FP_PROG_AR_SUPPORTS_DASH_L
-FP_PROG_AR_NEEDS_RANLIB
 
 dnl ** Check to see whether ln -s works
 AC_PROG_LN_S
