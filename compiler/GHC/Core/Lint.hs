@@ -1025,7 +1025,11 @@ lintIdOcc var nargs
              Nothing -> return ()
              Just dc -> checkTypeDataConOcc "expression" dc
 
-        ; usage <- varCallSiteUsage var
+          -- Don't add external names to the usage environment;
+          -- they are not relevant for linearity checks
+        ; usage <- case isExternalName (Var.varName var) of
+                     False -> varCallSiteUsage var
+                     True -> return zeroUE
 
         ; return (linted_bndr_ty, usage) }
 

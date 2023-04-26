@@ -1091,7 +1091,10 @@ tc_infer_id id_name
 check_local_id :: Id -> TcM ()
 check_local_id id
   = do { checkThLocalId id
-       ; tcEmitBindingUsage $ unitUE (idName id) OneTy }
+         -- Don't add external names to the usage environment;
+         -- they are not relevant for linearity checks
+       ; unless (isExternalName (idName id)) $
+           tcEmitBindingUsage $ unitUE (idName id) OneTy }
 
 check_naughty :: OccName -> TcId -> TcM ()
 check_naughty lbl id
