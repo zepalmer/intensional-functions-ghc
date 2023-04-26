@@ -274,7 +274,7 @@ rnSrcWarnDecls _ []
 rnSrcWarnDecls bndr_set decls'
   = do { -- check for duplicates
        ; mapM_ (\ dups -> let ((L loc rdr) :| (lrdr':_)) = dups
-                          in addErrAt (locA loc) (TcRnDuplicateWarningDecls lrdr' rdr))
+                          in addErrAt (locN loc) (TcRnDuplicateWarningDecls lrdr' rdr))
                warn_rdr_dups
        ; pairs_s <- mapM (addLocMA rn_deprec) decls
        ; return (WarnSome ((concat pairs_s))) }
@@ -834,7 +834,7 @@ rnFamEqn doc atfi extra_kvars
     --
     --   type instance F a b c = Either a b
     --                   ^^^^^
-    lhs_loc = case map lhsTypeArgSrcSpan pats ++ map getLocA extra_kvars of
+    lhs_loc = case map lhsTypeArgSrcSpan pats ++ map getLocN extra_kvars of
       []         -> panic "rnFamEqn.lhs_loc"
       [loc]      -> loc
       (loc:locs) -> loc `combineSrcSpans` last locs
@@ -2173,7 +2173,7 @@ rnLHsDerivingClause doc
                               , deriv_clause_tys = dct }))
   = do { (dcs', dct', fvs)
            <- rnLDerivStrategy doc dcs $ rn_deriv_clause_tys dct
-       ; warnNoDerivStrat dcs' (locA loc)
+       ; warnNoDerivStrat dcs' (locI loc)
        ; pure ( L loc (HsDerivingClause { deriv_clause_ext = noExtField
                                         , deriv_clause_strategy = dcs'
                                         , deriv_clause_tys = dct' })
@@ -2211,7 +2211,7 @@ rnLDerivStrategy doc mds thing_inside
   = case mds of
       Nothing -> boring_case Nothing
       Just (L loc ds) ->
-        setSrcSpanA loc $ do
+        setSrcSpanI loc $ do
           (ds', thing, fvs) <- rn_deriv_strat ds
           pure (Just (L loc ds'), thing, fvs)
   where
@@ -2268,7 +2268,7 @@ rnFamDecl mb_cls (FamilyDecl { fdLName = tycon, fdTyVars = tyvars
        ; ((tyvars', res_sig', injectivity'), fv1) <-
             bindHsQTyVars doc mb_cls kvs tyvars $ \ tyvars' _ ->
             do { let rn_sig = rnFamResultSig doc
-               ; (res_sig', fv_kind) <- wrapLocFstMA rn_sig res_sig
+               ; (res_sig', fv_kind) <- wrapLocFstMI rn_sig res_sig
                ; injectivity' <- traverse (rnInjectivityAnn tyvars' res_sig')
                                           injectivity
                ; return ( (tyvars', res_sig', injectivity') , fv_kind ) }
@@ -2375,7 +2375,7 @@ rnInjectivityAnn tvBndrs (L _ (TyVarSig _ resTv))
                 ; injTo'   <- mapM rnLTyVar injTo
                 -- Note: srcSpan is unchanged, but typechecker gets
                 -- confused, l2l call makes it happy
-                ; return $ L (l2l srcSpan) (InjectivityAnn x injFrom' injTo') }
+                ; return $ L (l2li srcSpan) (InjectivityAnn x injFrom' injTo') }
 
    ; let tvNames  = Set.fromList $ hsAllLTyVarNames tvBndrs
          resName  = hsLTyVarName resTv
@@ -2387,12 +2387,12 @@ rnInjectivityAnn tvBndrs (L _ (TyVarSig _ resTv))
    -- not-in-scope variables) don't check the validity of injectivity
    -- annotation. This gives better error messages.
    ; when (noRnErrors && not lhsValid) $
-        addErrAt (getLocA injFrom) $
+        addErrAt (getLocN injFrom) $
           TcRnIncorrectTyVarOnLhsOfInjCond resName injFrom
 
    ; when (noRnErrors && not (Set.null rhsValid)) $
       do { let errorVars = Set.toList rhsValid
-         ; addErrAt (locA srcSpan) $
+         ; addErrAt (locI srcSpan) $
               TcRnUnknownTyVarsOnRhsOfInjCond errorVars }
 
    ; return injDecl' }
@@ -2406,7 +2406,7 @@ rnInjectivityAnn tvBndrs (L _ (TyVarSig _ resTv))
 -- So we rename injectivity annotation like we normally would except that
 -- this time we expect "result" to be reported not in scope by rnLTyVar.
 rnInjectivityAnn _ _ (L srcSpan (InjectivityAnn x injFrom injTo)) =
-   setSrcSpanA srcSpan $ do
+   setSrcSpanI srcSpan $ do
    (injDecl', _) <- askNoErrs $ do
      injFrom' <- rnLTyVar injFrom
      injTo'   <- mapM rnLTyVar injTo
@@ -2439,7 +2439,7 @@ rnConDecl :: ConDecl GhcPs -> RnM (ConDecl GhcRn, FreeVars)
 rnConDecl decl@(ConDeclH98 { con_name = name, con_ex_tvs = ex_tvs
                            , con_mb_cxt = mcxt, con_args = args
                            , con_doc = mb_doc, con_forall = forall_ })
-  = do  { _        <- addLocMA checkConName name
+  = do  { _        <- addLocMN checkConName name
         ; new_name <- lookupLocatedTopConstructorRnN name
 
         -- We bind no implicit binders here; this is just like
@@ -2476,7 +2476,7 @@ rnConDecl (ConDeclGADT { con_names   = names
                        , con_g_args  = args
                        , con_res_ty  = res_ty
                        , con_doc     = mb_doc })
-  = do  { mapM_ (addLocMA checkConName) names
+  = do  { mapM_ (addLocMN checkConName) names
         ; new_names <- mapM (lookupLocatedTopConstructorRnN) names
 
         ; let -- We must ensure that we extract the free tkvs in left-to-right
@@ -2594,13 +2594,13 @@ extendPatSynEnv dup_fields_ok has_sel val_decls local_fix_env thing = do {
                                        , psb_args = RecCon as }))) <- bind
       = do
           bnd_name <- newTopSrcBinder (L (l2l bind_loc) n)
-          let field_occs = map ((\ f -> L (noAnnSrcSpan $ getLocA (foLabel f)) f) . recordPatSynField) as
+          let field_occs = map ((\ f -> L (noAnnSrcSpan $ getLocN (foLabel f)) f) . recordPatSynField) as
           flds <- mapM (newRecordFieldLabel dup_fields_ok has_sel [bnd_name]) field_occs
           let con_info = mkConInfo (conDetailsArity length (RecCon as)) flds
           return ((PatSynName bnd_name, con_info) : names)
       | L bind_loc (PatSynBind _ (PSB { psb_id = L _ n, psb_args = as })) <- bind
       = do
-        bnd_name <- newTopSrcBinder (L (la2na bind_loc) n)
+        bnd_name <- newTopSrcBinder (L (l2l bind_loc) n)
         let con_info = mkConInfo (conDetailsArity length as) []
         return ((PatSynName bnd_name, con_info) : names)
       | otherwise

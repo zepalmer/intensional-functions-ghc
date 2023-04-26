@@ -192,8 +192,8 @@ rnExports explicit_mod exports
         ; let real_exports
                  | explicit_mod = exports
                  | has_main
-                          = Just (noLocA [noLocA (IEVar noExtField
-                                     (noLocA (IEName noExtField $ noLocA default_main)))])
+                          = Just (noLocI [noLocA (IEVar noExtField
+                                     (noLocA (IEName noExtField $ noLocN default_main)))])
                         -- ToDo: the 'noLoc' here is unhelpful if 'main'
                         --       turns out to be out of scope
                  | otherwise = Nothing
@@ -532,7 +532,7 @@ lookupChildrenExport spec_parent rdr_items = mapAndReportM doOne rdr_items
               do { ub <- reportUnboundName unboundName
                  ; let l = getLoc n
                        gre = localVanillaGRE NoParent ub
-                 ; return (L l (IEName noExtField (L (la2na l) ub)), gre)}
+                 ; return (L l (IEName noExtField (L (l2l l) ub)), gre)}
             FoundChild child@(GRE { gre_par = par }) ->
               do { checkPatSynParent spec_parent par child
                  ; let child_nm = greName child

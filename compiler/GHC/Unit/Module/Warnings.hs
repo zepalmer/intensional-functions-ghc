@@ -176,10 +176,10 @@ data WarningTxt pass
       (Maybe (Located WarningCategory))
         -- ^ Warning category attached to this WARNING pragma, if any;
         -- see Note [Warning categories]
-      (Located SourceText)
+      SourceText
       [Located (WithHsDocIdentifiers StringLiteral pass)]
    | DeprecatedTxt
-      (Located SourceText)
+      SourceText
       [Located (WithHsDocIdentifiers StringLiteral pass)]
   deriving Generic
 
@@ -194,12 +194,12 @@ deriving instance (Data pass, Data (IdP pass)) => Data (WarningTxt pass)
 
 instance Outputable (WarningTxt pass) where
     ppr (WarningTxt _ lsrc ws)
-      = case unLoc lsrc of
+      = case lsrc of
           NoSourceText   -> pp_ws ws
           SourceText src -> text src <+> pp_ws ws <+> text "#-}"
 
     ppr (DeprecatedTxt lsrc  ds)
-      = case unLoc lsrc of
+      = case lsrc of
           NoSourceText   -> pp_ws ds
           SourceText src -> text src <+> pp_ws ds <+> text "#-}"
 
@@ -207,21 +207,21 @@ instance Binary (WarningTxt GhcRn) where
     put_ bh (WarningTxt c s w) = do
             putByte bh 0
             put_ bh $ unLoc <$> c
-            put_ bh $ unLoc s
+            put_ bh s
             put_ bh $ unLoc <$> w
     put_ bh (DeprecatedTxt s d) = do
             putByte bh 1
-            put_ bh $ unLoc s
+            put_ bh s
             put_ bh $ unLoc <$> d
 
     get bh = do
             h <- getByte bh
             case h of
               0 -> do c <- fmap noLoc <$> get bh
-                      s <- noLoc <$> get bh
+                      s <- get bh
                       w <- fmap noLoc  <$> get bh
                       return (WarningTxt c s w)
-              _ -> do s <- noLoc <$> get bh
+              _ -> do s <- get bh
                       d <- fmap noLoc <$> get bh
                       return (DeprecatedTxt s d)
 
@@ -304,4 +304,3 @@ plusWarns NoWarnings d = d
 plusWarns _ (WarnAll t) = WarnAll t
 plusWarns (WarnAll t) _ = WarnAll t
 plusWarns (WarnSome v1) (WarnSome v2) = WarnSome (v1 ++ v2)
-
