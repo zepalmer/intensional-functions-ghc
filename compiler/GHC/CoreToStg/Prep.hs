@@ -1444,36 +1444,44 @@ the continuation may not be a manifest lambda.
 
 Note [ANF-ising literal string arguments]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Consider a program like,
+Consider a Core program like,
 
     data Foo = Foo Addr#
-
     foo = Foo "turtle"#
 
-When we go to ANFise this we might think that we want to float the string
-literal like we do any other non-trivial argument. This would look like,
-
-    foo = u\ [] case "turtle"# of s { __DEFAULT__ -> Foo s }
-
-However, this 1) isn't necessary since strings are in a sense "trivial"; and 2)
-wreaks havoc on the CAF annotations that we produce here since we the result
-above is caffy since it is updateable. Ideally at some point in the future we
-would like to just float the literal to the top level as suggested in #11312,
+String literals are non-trivial, see 'GHC.Types.Literal.litIsTrivial'.
+Hence they are non-atomic in STG and we ANFise to
 
     s = "turtle"#
     foo = Foo s
 
-However, until then we simply add a special case excluding literals from the
-floating done by cpeArg.
--}
+(String literals are the only kind of binding allowed at top-level and hence
+their floats are `OkToSpec` like lifted bindings, whereas all other unlifted
+floats are `IfUnboxedOk` so that they don't float to top-level.)
 
--- | Is an argument okay to CPE?
-okCpeArg :: CoreExpr -> Bool
--- Don't float literals. See Note [ANF-ising literal string arguments].
-okCpeArg (Lit _) = False
--- Do not eta expand a trivial argument
-okCpeArg expr    = not (exprIsTrivial expr)
+This leads to "bad" code if the arg is under a lambda, because CorePrep
+doesn't float out of RHSs, e.g., (T23270)
+
+    foo x = ... petError "turtle"# ...
+==> foo x = ... case "turtle"# of s { __DEFAULT -> petError s } ...
+
+"Bad", because this appears to eval an HNF on every call.
+But actually, it doesn't, because "turtle"# is already an HNF. Here is the Cmm:
+
+  [section ""cstring" . cB4_str" {
+       cB4_str:
+           I8[] "turtle"
+   }
+  ...
+  _sAG::I64 = cB4_str;
+  R2 = _sAG::I64;
+  Sp = Sp + 8;
+  call Control.Exception.Base.petError_info(R2) args: 8, res: 0, upd: 8;
+
+Besides, with -O, FloatOut will already have already floated "turtle"# to the
+top-level, where CSE has a chance to deduplicate strings early (before the
+linker, that is).
+-}
 
 -- This is where we arrange that a non-trivial argument is let-bound
 cpeArg :: CorePrepEnv -> Demand
@@ -1489,12 +1497,14 @@ cpeArg env dmd arg
                 -- Else case: arg1 might have lambdas, and we can't
                 --            put them inside a wrapBinds
 
-       ; if okCpeArg arg2
-         then do { v <- newVar arg_ty
+       -- /Do/ float out string literals, because they are non-trivial.
+       -- See Note [ANF-ising literal string arguments]
+       ; if exprIsTrivial arg2
+         then return (floats2, arg2)
+         else do { v <- newVar arg_ty
                  ; let arg3      = cpeEtaExpand (exprArity arg2) arg2
                        arg_float = mkFloat env dmd is_unlifted v arg3
                  ; return (addFloat floats2 arg_float, varToCoreExpr v) }
-         else return (floats2, arg2)
        }
 
 {-
@@ -1749,17 +1759,18 @@ instance Outputable Floats where
 
 instance Outputable OkToSpec where
   ppr OkToSpec    = text "OkToSpec"
-  ppr IfUnboxedOk = text "IfUnboxedOk"
+  ppr IfUnliftedOk = text "IfUnliftedOk"
   ppr NotOkToSpec = text "NotOkToSpec"
 
 -- Can we float these binds out of the rhs of a let?  We cache this decision
 -- to avoid having to recompute it in a non-linear way when there are
 -- deeply nested lets.
 data OkToSpec
-   = OkToSpec           -- Lazy bindings of lifted type
-   | IfUnboxedOk        -- A mixture of lazy lifted bindings and n
-                        -- ok-to-speculate unlifted bindings
-   | NotOkToSpec        -- Some not-ok-to-speculate unlifted bindings
+   = OkToSpec           -- ^ Lazy bindings of lifted type. Float as you please
+   | IfUnliftedOk       -- ^ A mixture of lazy lifted bindings and n
+                        -- ok-to-speculate unlifted bindings.
+                        -- Float out of lets, but not to top-level!
+   | NotOkToSpec        -- ^ Some not-ok-to-speculate unlifted bindings
 
 mkFloat :: CorePrepEnv -> Demand -> Bool -> Id -> CpeRhs -> FloatingBind
 mkFloat env dmd is_unlifted bndr rhs
@@ -1810,15 +1821,18 @@ addFloat :: Floats -> FloatingBind -> Floats
 addFloat (Floats ok_to_spec floats) new_float
   = Floats (combine ok_to_spec (check new_float)) (floats `snocOL` new_float)
   where
-    check (FloatLet {})  = OkToSpec
-    check (FloatCase _ _ _ _ ok_for_spec)
-      | ok_for_spec = IfUnboxedOk
-      | otherwise   = NotOkToSpec
-    check FloatTick{}    = OkToSpec
+    check (FloatLet {})        = OkToSpec
+    check (FloatCase rhs _ _ _ ok_for_spec)
+      | Lit LitString{} <- rhs = OkToSpec
+      | ok_for_spec            = IfUnliftedOk
+      | otherwise              = NotOkToSpec
+    check FloatTick{}          = OkToSpec
         -- The ok-for-speculation flag says that it's safe to
         -- float this Case out of a let, and thereby do it more eagerly
-        -- We need the top-level flag because it's never ok to float
-        -- an unboxed binding to the top level
+        -- We need the IfUnliftedOk flag because it's never ok to float
+        -- an unlifted binding to the top level.
+        -- There is one exception: String literals! Hence we keep OkToSpec
+        -- See Note [ANF-ising literal string arguments]
 
 unitFloat :: FloatingBind -> Floats
 unitFloat = addFloat emptyFloats
@@ -1831,11 +1845,11 @@ concatFloats :: [Floats] -> OrdList FloatingBind
 concatFloats = foldr (\ (Floats _ bs1) bs2 -> appOL bs1 bs2) nilOL
 
 combine :: OkToSpec -> OkToSpec -> OkToSpec
-combine NotOkToSpec _ = NotOkToSpec
-combine _ NotOkToSpec = NotOkToSpec
-combine IfUnboxedOk _ = IfUnboxedOk
-combine _ IfUnboxedOk = IfUnboxedOk
-combine _ _           = OkToSpec
+combine NotOkToSpec _  = NotOkToSpec
+combine _ NotOkToSpec  = NotOkToSpec
+combine IfUnliftedOk _ = IfUnliftedOk
+combine _ IfUnliftedOk = IfUnliftedOk
+combine _ _            = OkToSpec
 
 deFloatTop :: Floats -> [CoreBind]
 -- For top level only; we don't expect any FloatCases
@@ -1868,31 +1882,47 @@ canFloat (Floats ok_to_spec fs) rhs
     go fbs_out (fb@(FloatLet _) : fbs_in)
       = go (fbs_out `snocOL` fb) fbs_in
 
+    go fbs_out (fb@(FloatCase (Lit LitString{}) _ _ _ _) : fbs_in)
+      -- See Note [ANF-ising literal string arguments]
+      = go (fbs_out `snocOL` fb) fbs_in
+
     go fbs_out (ft@FloatTick{} : fbs_in)
       = go (fbs_out `snocOL` ft) fbs_in
 
     go _ (FloatCase{} : _) = Nothing
 
-
 wantFloatNested :: RecFlag -> Demand -> Bool -> Floats -> CpeRhs -> Bool
-wantFloatNested is_rec dmd is_unlifted floats rhs
+wantFloatNested is_rec dmd rhs_is_unlifted floats rhs
   =  isEmptyFloats floats
   || isStrUsedDmd dmd
-  || is_unlifted
-  || (allLazyNested is_rec floats && exprIsHNF rhs)
+  || rhs_is_unlifted
+  || (allLazyNested is_rec floats && worth_floating floats rhs)
         -- Why the test for allLazyNested?
         --      v = f (x `divInt#` y)
         -- we don't want to float the case, even if f has arity 2,
-        -- because floating the case would make it evaluated too early
+        -- because floating the case would make it evaluated too early.
+  where
+    worth_floating (Floats _ fs) rhs = exprIsHNF rhs || all is_lit_string fs
+      -- Only float out of a RHS that becomes a NF in doing so. Otherwise we
+      -- potentially make 2 thunks (e.g., `[let t = g x, let u = f t]`) where we
+      -- had a single nested one before (e.g., `[let u = let t = g x in f t]`.
+      -- We relax when it's a LitString that we float out, because that doesn't
+      -- allocate. See Note [ANF-ising literal string arguments]
+      -- The LitString check is a bit crude, because wantFloatNested is
+      -- all-or-nothing. We might want to refactor to something more like
+      -- FloatOut.partitionByLevel for selective floating, but compiler perf
+      -- implications are unclear.
+    is_lit_string (FloatCase (Lit LitString{}) _ _ _ _) = True
+    is_lit_string _                                     = False
 
 allLazyTop :: Floats -> Bool
 allLazyTop (Floats OkToSpec _) = True
 allLazyTop _                   = False
 
 allLazyNested :: RecFlag -> Floats -> Bool
-allLazyNested _      (Floats OkToSpec    _) = True
-allLazyNested _      (Floats NotOkToSpec _) = False
-allLazyNested is_rec (Floats IfUnboxedOk _) = isNonRec is_rec
+allLazyNested _      (Floats OkToSpec    _)  = True
+allLazyNested _      (Floats NotOkToSpec _)  = False
+allLazyNested is_rec (Floats IfUnliftedOk _) = isNonRec is_rec
 
 {-
 ************************************************************************

@@ -40,10 +40,9 @@ import GHC.Types.SrcLoc (SrcSpan)
 import GHC.Types.Basic (Activation, RuleName)
 import {-# SOURCE #-} GHC.Tc.Types.Origin ( ClsInstOrQC(..) )
 import GHC.Parser.Errors.Basic
-import {-# SOURCE #-} Language.Haskell.Syntax.Expr
 import GHC.Unit.Module.Imported (ImportedModsVal)
 import GHC.Data.FastString (fsLit)
-import Language.Haskell.Syntax (LPat, LIdP)
+import Language.Haskell.Syntax (LPat, LIdP, LHsExpr)
   -- This {-# SOURCE #-} import should be removable once
   -- 'Language.Haskell.Syntax.Bind' no longer depends on 'GHC.Tc.Types.Evidence'.
 
