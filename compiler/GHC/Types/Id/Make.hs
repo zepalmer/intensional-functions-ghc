@@ -1337,35 +1337,45 @@ shouldUnpackTy :: BangOpts -> SrcUnpackedness -> FamInstEnvs -> Scaled Type -> B
 -- end up relying on ourselves!
 shouldUnpackTy bang_opts prag fam_envs ty
   | Just data_cons <- unpackable_type_datacons (scaledThing ty)
-  = all (ok_con_args emptyNameSet) data_cons && should_unpack data_cons
+  , should_unpack data_cons
+  , all ok_con data_cons
+  = True
   | otherwise
   = False
   where
-    ok_con_args :: NameSet -> DataCon -> Bool
-    ok_con_args dcs con
-       | dc_name `elemNameSet` dcs
-       = False
-       | otherwise
-       = all (ok_arg dcs')
-             (dataConOrigArgTys con `zip` dataConSrcBangs con)
-          -- NB: dataConSrcBangs gives the *user* request;
-          -- We'd get a black hole if we used dataConImplBangs
+    ok_con :: DataCon -> Bool      -- True <=> OK to unpack
+    ok_con top_con                 -- False <=> not safe
+      = ok_args emptyNameSet top_con
        where
-         dc_name = getName con
-         dcs' = dcs `extendNameSet` dc_name
+         top_con_name = getName top_con
 
-    ok_arg :: NameSet -> (Scaled Type, HsSrcBang) -> Bool
-    ok_arg dcs (Scaled _ ty, bang)
-      = not (attempt_unpack bang) || ok_ty dcs norm_ty
-      where
-        norm_ty = topNormaliseType fam_envs ty
+         ok_args dcs con
+           = all (ok_arg dcs) $
+             (dataConOrigArgTys con `zip` dataConSrcBangs con)
+             -- NB: dataConSrcBangs gives the *user* request;
+             -- We'd get a black hole if we used dataConImplBangs
 
-    ok_ty :: NameSet -> Type -> Bool
-    ok_ty dcs ty
-      | Just data_cons <- unpackable_type_datacons ty
-      = all (ok_con_args dcs) data_cons
-      | otherwise
-      = True        -- NB True here, in contrast to False at top level
+         ok_arg :: NameSet -> (Scaled Type, HsSrcBang) -> Bool
+         ok_arg dcs (Scaled _ ty, bang)
+           = not (attempt_unpack bang) || ok_ty dcs norm_ty
+           where
+             norm_ty = topNormaliseType fam_envs ty
+
+         ok_ty :: NameSet -> Type -> Bool
+         ok_ty dcs ty
+           | Just data_cons <- unpackable_type_datacons ty
+           = all (ok_rec_con dcs) data_cons
+           | otherwise
+           = True        -- NB True here, in contrast to False at top level
+
+         -- For the "at the root" comments see
+         -- Note [Recursive unboxing] wrinkle (W2)
+         ok_rec_con dcs con
+           | dc_name == top_con_name   = False  -- Recursion at the root
+           | dc_name `elemNameSet` dcs = True   -- Not at the root
+           | otherwise                 = ok_args (dcs `extendNameSet` dc_name) con
+           where
+             dc_name = getName con
 
     attempt_unpack :: HsSrcBang -> Bool
     attempt_unpack (HsSrcBang _ SrcUnpack NoSrcStrict)
@@ -1378,14 +1388,16 @@ shouldUnpackTy bang_opts prag fam_envs ty
       = bang_opt_strict_data bang_opts -- Be conservative
     attempt_unpack _ = False
 
-    -- Determine whether we ought to unpack a field based on user annotations if present and heuristics if not.
+    -- Determine whether we ought to unpack a field,
+    -- based on user annotations if present, and heuristics if not.
     should_unpack data_cons =
       case prag of
         SrcNoUnpack -> False -- {-# NOUNPACK #-}
         SrcUnpack   -> True  -- {-# UNPACK #-}
         NoSrcUnpack -- No explicit unpack pragma, so use heuristics
           | (_:_:_) <- data_cons
-          -> False -- don't unpack sum types automatically, but they can be unpacked with an explicit source UNPACK.
+          -> False -- Don't unpack sum types automatically, but they can
+                   -- be unpacked with an explicit source UNPACK.
           | otherwise
           -> bang_opt_unbox_strict bang_opts
              || (bang_opt_unbox_small bang_opts
@@ -1463,20 +1475,33 @@ But be careful not to try to unbox this!
         data T = MkT {-# UNPACK #-} !T Int
 Because then we'd get an infinite number of arguments.
 
-Here is a more complicated case:
-        data S = MkS {-# UNPACK #-} !T Int
-        data T = MkT {-# UNPACK #-} !S Int
-Each of S and T must decide independently whether to unpack
-and they had better not both say yes. So they must both say no.
-
-Also behave conservatively when there is no UNPACK pragma
-        data T = MkS !T Int
-with -funbox-strict-fields or -funbox-small-strict-fields
-we need to behave as if there was an UNPACK pragma there.
-
-But it's the *argument* type that matters. This is fine:
+Note that it's the *argument* type that matters. This is fine:
         data S = MkS S !Int
 because Int is non-recursive.
+
+Wrinkles:
+
+(W1) Here is a more complicated case:
+        data S = MkS {-# UNPACK #-} !T Int
+        data T = MkT {-# UNPACK #-} !S Int
+     Each of S and T must decide independently whether to unpack
+     and they had better not both say yes. So they must both say no.
+
+(W2) As #23307 shows,  we /do/ want to unpack the second arg of the Yes
+     data constructor in this example, despite the recursion in List:
+       data List a = Nil | Cons a !(List a)
+       data Unconsed a = Unconsed a !(List a)
+       data MUnconsed a = No | Yes {-# UNPACK #-} !(Unconsed a)
+     When looking at
+       {-# UNPACK #-} (Unconsed a)
+     we can take Unconsed apart, but then get into a loop with List.
+     That's fine: we can still take Unconsed apart.  It's only if we
+     have a loop /at the root/ that we must not unpack.
+
+(W3) Also behave conservatively when there is no UNPACK pragma
+        data T = MkS !T Int
+     with -funbox-strict-fields or -funbox-small-strict-fields
+     we need to behave as if there was an UNPACK pragma there.
 
 ************************************************************************
 *                                                                      *
