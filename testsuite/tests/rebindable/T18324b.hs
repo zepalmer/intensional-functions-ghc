@@ -1,15 +1,6 @@
 {-# LANGUAGE GADTs, TypeFamilies, TypeFamilyDependencies #-}
-{-# LANGUAGE AllowAmbiguousTypes     #-} -- for unXRec, etc.
-{-# LANGUAGE CPP                     #-}
 {-# LANGUAGE ConstraintKinds         #-}
 {-# LANGUAGE DataKinds               #-}
-{-# LANGUAGE DeriveDataTypeable      #-}
-{-# LANGUAGE EmptyCase               #-}
-{-# LANGUAGE EmptyDataDeriving       #-}
-{-# LANGUAGE FlexibleContexts        #-}
-{-# LANGUAGE FlexibleInstances       #-}
-{-# LANGUAGE MultiParamTypeClasses   #-}
-{-# LANGUAGE RankNTypes              #-}
 {-# LANGUAGE ScopedTypeVariables     #-}
 {-# LANGUAGE TypeFamilyDependencies  #-}
 {-# LANGUAGE UndecidableInstances    #-}
@@ -23,11 +14,11 @@ unLoc (L _ e)  = e
 
 data B = B
 
+type family Anno a = b 
 
 type family XRec p a = r | r -> a
 type instance XRec (GhcPass p) a = L (Anno a) a
 
-type family Anno a = b 
 
 data GhcPass (pass :: Pass)
 data Pass = Rn
@@ -38,14 +29,9 @@ type family IdGhcP (pass :: Pass) where
 
 type GhcRn = GhcPass 'Rn
 
-data LHsType pass
 
 data ClsInstDecl pass =
-  ClsInstDecl
-  { -- cid_tyfam_insts   :: [LTyFamInstDecl pass]
-  -- , 
-    cid_datafam_insts :: [LDataFamInstDecl pass]
-  }
+  ClsInstDecl { cid_datafam_insts :: LDataFamInstDecl pass }
 
 
 -- type LTyFamInstDecl pass = XRec pass (TyFamInstDecl pass)
@@ -66,16 +52,9 @@ data FamEqn pass rhs
 
 fffggg :: ClsInstDecl GhcRn -> [Int]
 fffggg ddd = -- let
-    -- data_fams = 
       do
-        [FamEqn { feqn_tycon = L l _
-                , feqn_rhs   = defn }] <- unLoc <$> cid_datafam_insts ddd
+        FamEqn { feqn_tycon = L _ _
+               , feqn_rhs   = _ } {-:: FamEqn GhcRn (HsDataDefn GhcRn)-} <- unLoc $ cid_datafam_insts ddd
         [ 0 ]
-    -- in
-    --   data_fams
-    -- ty_fams = do
-    --   TyFamInstDecl { tfid_eqn = FamEqn { feqn_tycon = L l _ } } <- unLoc <$> cid_tyfam_insts ddd
-    --   [ 0 ]
-    -- in data_fams ++ ty_fams
 
 

@@ -10,9 +10,6 @@ qqq ts = do { (a:b:as) <- Just ts
 
 newtype ST a b = ST (a, b)
 
-emptyST :: Maybe (ST Int Int)
-emptyST = Just $ ST (0, 0)
-
 ppp :: Maybe (ST Int Int) -> Maybe (ST Int Int)
 ppp st = do { ST (x, y) <- st
             ; return $ ST (x+1, y+1)}

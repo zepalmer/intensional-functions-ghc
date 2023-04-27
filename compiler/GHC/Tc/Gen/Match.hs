@@ -58,6 +58,7 @@ import GHC.Tc.Types.Evidence
 
 import GHC.Core.Multiplicity
 import GHC.Core.UsageEnv
+import GHC.Core.ConLike
 import GHC.Core.TyCon
 -- Create chunkified tuple types for monad comprehensions
 import GHC.Core.Make
@@ -327,7 +328,7 @@ tcDoStmts doExpr@(DoExpr _) (L l stmts) res_ty
                                                (unLoc expand_expr)
                                         -- Do expansion on the fly
         ; traceTc "tcDoStmts do" (vcat [ text "original:" <+> ppr expand_do_expr
-                                       , text "expnd:" <+> ppr expand_expr
+                                       , text "expanded:" <+> ppr expand_expr
                                        ])
         ; tcExpr expand_do_expr res_ty
         }
@@ -1375,10 +1376,13 @@ mk_failable_lexpr_tcm pat lexpr fail_op =
   do { ((tc_pat, _), _) <- tcInferPat (FRRBindStmt DoNotation)
                            PatBindRhs pat $ return id -- whatever
      ; dflags <- getDynFlags
-     ; if isIrrefutableHsPat dflags tc_pat
+     ; if isIrrefutableHsPat dflags tc_pat -- don't decorate with fail statement if the pattern is irrefutable
+          || (isPatSynCon (unLoc tc_pat))  -- pattern syns always get a fail block while desugaring so skip
        then return $ mkHsLam [pat] lexpr
        else mk_fail_lexpr pat lexpr fail_op
      }
+  where isPatSynCon (ConPat {pat_con = L _ (PatSynCon _)}) = True
+        isPatSynCon _ = False
 
 -- makes the fail block
 -- TODO: check the discussion around MonadFail.fail type signature.
