@@ -109,11 +109,9 @@ pointer to `fieldsSam`. This is problematic as `fieldsSam` may take advantage
 of the unlifted nature of its arguments by omitting handling of the zero
 tag when scrutinising them.
 
-The fix is straightforward: extend the logic in `mkLFImported` to cover
-(nullary) datacon wrappers as well as workers. This is safe because we
-know that the wrapper of a nullary datacon will be in WHNF, even if it
-includes equalities evidence (since such equalities are not runtime
-relevant). This fixed #23146.
+The fix is straightforward: ensure we always construct a /correct/ LFInfo for
+datacon workers and wrappers, and populate the `lfInfo` with it. See
+Note [LFInfo of DataCon workers and wrappers]. This fixed #23146.
 
 See also Note [The LFInfo of Imported Ids]
 -}
