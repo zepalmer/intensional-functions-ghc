@@ -150,17 +150,11 @@ extern char **environ;
       SymI_NeedsProto(__mingw_module_is_dll)             \
       RTS_WIN32_ONLY(SymI_NeedsProto(___chkstk_ms))      \
       RTS_WIN64_ONLY(SymI_NeedsProto(___chkstk_ms))      \
-      SymI_HasProto(__mingw_vsnwprintf)                  \
-      /* ^^ Need to figure out why this is needed.  */   \
       /* See Note [_iob_func symbol] */                  \
       RTS_WIN64_ONLY(SymI_HasProto_redirect(             \
          __imp___acrt_iob_func, __rts_iob_func, STRENGTH_WEAK, SYM_TYPE_INDIRECT_DATA))   \
       RTS_WIN32_ONLY(SymI_HasProto_redirect(             \
-         __imp____acrt_iob_func, __rts_iob_func, STRENGTH_WEAK, SYM_TYPE_INDIRECT_DATA))  \
-      SymI_HasProto(__mingw_vsnwprintf)                  \
-      /* ^^ Need to figure out why this is needed.  */   \
-      SymI_HasProto(__mingw_vfprintf)                    \
-      /* ^^ Need to figure out why this is needed.  */
+         __imp____acrt_iob_func, __rts_iob_func, STRENGTH_WEAK, SYM_TYPE_INDIRECT_DATA))
 #else
 #define RTS_MINGW_ONLY_SYMBOLS /**/
 #endif
