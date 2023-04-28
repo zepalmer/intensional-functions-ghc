@@ -737,6 +737,27 @@ checkSTACK (StgStack *stack)
     checkStackChunk(sp, stack_end);
 }
 
+/*
+ * Note [Sanity-checking global_link]
+ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ * TSOs are a bit odd in that they have a global_link pointer field
+ * which is not scavenged by the GC. This field is used to track the
+ * generations[_].[old_]threads lists and is ultimately updated by
+ * MarkWeak.c:tidyThreadList.
+
+ * Typically the fact that this field is not scavenged is fine as all reachable
+ * TSOs on the heap are guaranteed to be on some generation's thread list and
+ * therefore will be scavenged by tidyThreadList. However, the sanity checker
+ * poses a bit of a challenge here as it walks heap blocks directly and
+ * therefore may encounter TSOs which aren't reachable via the heap.
+ * For this reason, checkTSO does not check global_link. Instead, we only do
+ * so in checkGlobalTSOList, which by definition will only look at
+ * threads which are reachable via a thread list (and therefore must have won
+ * the forwarding-pointer race).
+ *
+ * See #19146.
+ */
+
 void
 checkTSO(StgTSO *tso)
 {
@@ -761,9 +782,11 @@ checkTSO(StgTSO *tso)
     ASSERT(LOOKS_LIKE_CLOSURE_PTR(tso->bq));
     ASSERT(LOOKS_LIKE_CLOSURE_PTR(tso->blocked_exceptions));
     ASSERT(LOOKS_LIKE_CLOSURE_PTR(tso->stackobj));
-    ASSERT(LOOKS_LIKE_CLOSURE_PTR(tso->global_link) &&
-            (tso->global_link == END_TSO_QUEUE ||
-             get_itbl((StgClosure*)tso->global_link)->type == TSO));
+
+    // This assertion is sadly not viable. See Note [Sanity-checking global_link].
+    //ASSERT(LOOKS_LIKE_CLOSURE_PTR(tso->global_link) &&
+    //        (tso->global_link == END_TSO_QUEUE ||
+    //         get_itbl((StgClosure*)tso->global_link)->type == TSO));
 
     if (tso->label) {
         ASSERT(LOOKS_LIKE_CLOSURE_PTR(tso->label));
