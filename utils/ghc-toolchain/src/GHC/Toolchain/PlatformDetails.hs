@@ -96,7 +96,7 @@ checkLeadingUnderscore :: Cc -> Nm -> M Bool
 checkLeadingUnderscore cc nm = checking ctxt $ withTempDir $ \dir -> do
     let test_o = dir </> "test.o"
     compileC cc test_o prog
-    out <- readProgram (nmProgram nm) [test_o]
+    out <- readProgramStdout (nmProgram nm) [test_o]
     return $ "_func" `isInfixOf` out
   where
     prog = "int func(void) { return 0; }"

@@ -6,6 +6,7 @@ module GHC.Toolchain.Program
     , runProgram
     , callProgram
     , readProgram
+    , readProgramStdout
       -- * Finding 'Program's
     , ProgOpt(..)
     , emptyProgOpt
@@ -58,10 +59,20 @@ callProgram prog args = do
         , "Exited with code " ++ show n
         ]
 
-readProgram :: Program -> [String] -> M String
+-- | Runs a program with a list of arguments and returns the exit code and the
+-- stdout and stderr output
+readProgram :: Program -> [String] -> M (ExitCode, String, String)
 readProgram prog args = do
     logExecute prog args
-    liftIO $ readProcess (prgPath prog) (prgFlags prog ++ args) ""
+    liftIO $ readProcessWithExitCode (prgPath prog) (prgFlags prog ++ args) ""
+
+-- | Runs a program with a list of arguments and returns the stdout output
+readProgramStdout :: Program -> [String] -> M String
+readProgramStdout prog args = do
+    logExecute prog args
+    (_code, stdout, _stderr) <- liftIO $ readProcessWithExitCode (prgPath prog) (prgFlags prog ++ args) ""
+    -- Ignores the exit code!
+    return stdout
 
 logExecute :: Program -> [String] -> M ()
 logExecute prog args =

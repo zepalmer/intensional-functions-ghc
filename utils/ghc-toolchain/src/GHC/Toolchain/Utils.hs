@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module GHC.Toolchain.Utils
@@ -5,6 +6,7 @@ module GHC.Toolchain.Utils
     , expectFileExists
     , withTempDir
     , oneOf
+    , isSuccess
     ) where
 
 import Control.Monad
@@ -13,6 +15,7 @@ import Control.Monad.IO.Class
 import System.Directory
 import System.FilePath
 import System.IO.Error
+import System.Exit
 
 import GHC.Toolchain.Prelude
 
@@ -52,3 +55,9 @@ expectFileExists path err = do
 
 oneOf :: String -> [M b] -> M b
 oneOf err = foldr (<|>) (throwE err)
+
+isSuccess :: ExitCode -> Bool
+isSuccess = \case
+  ExitSuccess -> True
+  ExitFailure _ -> False
+

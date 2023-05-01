@@ -77,8 +77,8 @@ checkSupportsNoPie ccLink = withTempDir $ \dir -> do
     let test = dir </> "test"
     -- Check output as some GCC versions only warn and don't respect -Werror
     -- when passed an unrecognized flag.
-    out <- readProgram ccLink ["-no-pie", "-Werror", "-x", "c", test_c, "-o", test]
-    if "unrecognized" `isInfixOf` out
+    (code, out, _err) <- readProgram ccLink ["-no-pie", "-Werror", "-x", "c", test_c, "-o", test]
+    if isSuccess code && "unrecognized" `isInfixOf` out
       then return False
       else return True
 
@@ -119,7 +119,7 @@ checkBfdCopyBug archOs cc mb_readelf ccLink
 
     callProgram ccLink ["-o", exe, test_o, main_o, lib_so]
 
-    out <- readProgram (readelfProgram readelf) ["-r", exe]
+    out <- readProgramStdout (readelfProgram readelf) ["-r", exe]
     when ("R_ARM_COPY" `isInfixOf` out) $
         throwE "Your linker is affected by binutils #16177. Please choose a different linker."
 

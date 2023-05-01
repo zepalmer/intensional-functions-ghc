@@ -36,14 +36,14 @@ checkMergingWorks cc nm mergeObjs =
         compileC cc (fo "a") "void funA(int x) { return x; }"
         compileC cc (fo "b") "void funB(int x) { return x; }"
         callProgram (mergeObjsProgram mergeObjs) [fo "a", fo "b", "-o", fo "out"]
-        out <- readProgram (nmProgram nm) [fo "out"]
+        out <- readProgramStdout (nmProgram nm) [fo "out"]
         let ok = all (`isInfixOf` out) ["funA", "funB"]
         unless ok $ throwE "merged objects is missing symbols"
 
 checkForGoldT22266 :: Cc -> CcLink -> MergeObjs -> M ()
 checkForGoldT22266 cc ccLink mergeObjs = do
     version <- checking "for ld.gold object merging bug (binutils #22266)" $
-        readProgram (mergeObjsProgram mergeObjs) ["--version"]
+        readProgramStdout (mergeObjsProgram mergeObjs) ["--version"]
     when ("gold" `isInfixOf` version) check_it
   where
     check_it =

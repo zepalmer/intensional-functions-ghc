@@ -22,7 +22,7 @@ data Ar = Ar { arMkArchive :: Program
 findAr :: ProgOpt -> M Ar
 findAr progOpt = checking "for 'ar'" $ do
     bareAr <- findProgram "ar archiver" progOpt ["ar"]
-    arIsGnu <- ("GNU" `isInfixOf`) <$> readProgram bareAr ["--version"]
+    arIsGnu <- ("GNU" `isInfixOf`) <$> readProgramStdout bareAr ["--version"]
 
     -- Figure out how to invoke ar to create archives...
     mkArchive <- checking "for how to make archives"
@@ -84,7 +84,7 @@ checkArSupportsDashL bareAr = checking "that ar supports -L" $ withTempDir $ \di
     callProgram bareAr ["qc", archive2, file "b0", file "b1"]
     oneOf "trying -L"
         [ do callProgram bareAr ["qcL", merged, archive1, archive2]
-             contents <- readProgram bareAr ["t", merged]
+             contents <- readProgramStdout bareAr ["t", merged]
              return $ not $ "conftest.a1" `isInfixOf` contents
         , return False
         ]
@@ -98,7 +98,7 @@ checkArSupportsAtFile bareAr mkArchive = checking "that ar supports @-files" $ w
     createFile f
     writeFile atfile (unlines objs)
     callProgram mkArchive [archive, "@" ++ dir </> "conftest.atfile"]
-    contents <- readProgram bareAr ["t", archive]
+    contents <- readProgramStdout bareAr ["t", archive]
     if lines contents == objs
       then return True
       else logDebug "Contents didn't match" >> return False
