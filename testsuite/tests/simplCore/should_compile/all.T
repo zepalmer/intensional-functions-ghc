@@ -478,3 +478,4 @@ test('RewriteHigherOrderPatterns', normal, compile, ['-O -ddump-rule-rewrites -d
 test('T23024', normal, multimod_compile, ['T23024', '-O -v0'])
 test('T23026', normal, compile, ['-O'])
 test('T23307', normal, compile, ['-O -ddump-simpl -dno-typeable-binds -dsuppress-uniques'])
+test('T23307a', normal, compile, ['-O -ddump-simpl -dno-typeable-binds -dsuppress-uniques'])

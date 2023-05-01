@@ -1359,8 +1359,8 @@ shouldUnpackTy bang_opts prag fam_envs ty
          ok_arg dcs (Scaled _ ty, HsSrcBang _ unpack_prag str_prag)
            | strict_field str_prag
            , Just data_cons <- unpackable_type_datacons (topNormaliseType fam_envs ty)
-           , should_unpack unpack_prag data_cons
-           = all (ok_rec_con dcs) data_cons
+           , should_unpack unpack_prag data_cons  -- Wrinkle (W3)
+           = all (ok_rec_con dcs) data_cons       --  of Note [Recursive unboxing]
            | otherwise
            = True        -- NB True here, in contrast to False at top level
 
@@ -1479,19 +1479,29 @@ Wrinkles:
 
 (W2) As #23307 shows,  we /do/ want to unpack the second arg of the Yes
      data constructor in this example, despite the recursion in List:
-       data List a = Nil | Cons a !(List a)
-       data Unconsed a = Unconsed a !(List a)
+       data Stream a   = Cons a !(Stream a)
+       data Unconsed a = Unconsed a !(Stream a)
        data MUnconsed a = No | Yes {-# UNPACK #-} !(Unconsed a)
      When looking at
        {-# UNPACK #-} (Unconsed a)
-     we can take Unconsed apart, but then get into a loop with List.
+     we can take Unconsed apart, but then get into a loop with Stream.
      That's fine: we can still take Unconsed apart.  It's only if we
      have a loop /at the root/ that we must not unpack.
 
-(W3) Also behave conservatively when there is no UNPACK pragma
+(W3) Moreover (W2) can apply even if there is a recursive loop:
+       data List a = Nil | Cons {-# UNPACK #-} !(Unconsed a)
+       data Unconsed a = Unconsed a !(List a)
+     Here there is mutual recursion between `Unconsed` and `List`; and yet
+     we can unpack the field of `Cons` because we will not unpack the second
+     field of `Unconsed`: we never unpack a sum type without an explicit
+     pragma (see should_unpack).
+
+(W4) We behave conservatively when there is no UNPACK pragma
         data T = MkS !T Int
      with -funbox-strict-fields or -funbox-small-strict-fields
-     we need to behave as if there was an UNPACK pragma there.
+     we behave as if there was an UNPACK pragma there.  "Conservative"
+     in the sense that we recurse more often, which may stop us unboxing
+     because we find a loop at the toot.
 
 ************************************************************************
 *                                                                      *
