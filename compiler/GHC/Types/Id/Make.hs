@@ -1337,7 +1337,7 @@ shouldUnpackTy :: BangOpts -> SrcUnpackedness -> FamInstEnvs -> Scaled Type -> B
 -- end up relying on ourselves!
 shouldUnpackTy bang_opts prag fam_envs ty
   | Just data_cons <- unpackable_type_datacons (scaledThing ty)
-  , should_unpack data_cons
+  , should_unpack prag data_cons
   , all ok_con data_cons
   = True
   | otherwise
@@ -1356,14 +1356,10 @@ shouldUnpackTy bang_opts prag fam_envs ty
              -- We'd get a black hole if we used dataConImplBangs
 
          ok_arg :: NameSet -> (Scaled Type, HsSrcBang) -> Bool
-         ok_arg dcs (Scaled _ ty, bang)
-           = not (attempt_unpack bang) || ok_ty dcs norm_ty
-           where
-             norm_ty = topNormaliseType fam_envs ty
-
-         ok_ty :: NameSet -> Type -> Bool
-         ok_ty dcs ty
-           | Just data_cons <- unpackable_type_datacons ty
+         ok_arg dcs (Scaled _ ty, HsSrcBang _ unpack_prag str_prag)
+           | strict_field str_prag
+           , Just data_cons <- unpackable_type_datacons (topNormaliseType fam_envs ty)
+           , should_unpack unpack_prag data_cons
            = all (ok_rec_con dcs) data_cons
            | otherwise
            = True        -- NB True here, in contrast to False at top level
@@ -1377,20 +1373,15 @@ shouldUnpackTy bang_opts prag fam_envs ty
            where
              dc_name = getName con
 
-    attempt_unpack :: HsSrcBang -> Bool
-    attempt_unpack (HsSrcBang _ SrcUnpack NoSrcStrict)
-      = bang_opt_strict_data bang_opts
-    attempt_unpack (HsSrcBang _ SrcUnpack SrcStrict)
-      = True
-    attempt_unpack (HsSrcBang _  NoSrcUnpack SrcStrict)
-      = True  -- Be conservative
-    attempt_unpack (HsSrcBang _  NoSrcUnpack NoSrcStrict)
-      = bang_opt_strict_data bang_opts -- Be conservative
-    attempt_unpack _ = False
+    strict_field :: SrcStrictness -> Bool
+    -- True <=> strict field
+    strict_field NoSrcStrict = bang_opt_strict_data bang_opts
+    strict_field SrcStrict   = True
+    strict_field SrcLazy     = False
 
     -- Determine whether we ought to unpack a field,
     -- based on user annotations if present, and heuristics if not.
-    should_unpack data_cons =
+    should_unpack prag data_cons =
       case prag of
         SrcNoUnpack -> False -- {-# NOUNPACK #-}
         SrcUnpack   -> True  -- {-# UNPACK #-}
@@ -1403,7 +1394,6 @@ shouldUnpackTy bang_opts prag fam_envs ty
              || (bang_opt_unbox_small bang_opts
                  && rep_tys `lengthAtMost` 1)  -- See Note [Unpack one-wide fields]
       where (rep_tys, _) = dataConArgUnpack ty
-
 
 -- Given a type already assumed to have been normalized by topNormaliseType,
 -- unpackable_type_datacons ty = Just datacons
