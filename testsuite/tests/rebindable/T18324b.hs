@@ -14,7 +14,7 @@ unLoc (L _ e)  = e
 
 data B = B
 
-type family Anno a = b 
+type family Anno a = b
 
 type family XRec p a = r | r -> a
 type instance XRec (GhcPass p) a = L (Anno a) a
@@ -33,17 +33,14 @@ type GhcRn = GhcPass 'Rn
 data ClsInstDecl pass =
   ClsInstDecl { cid_datafam_insts :: LDataFamInstDecl pass }
 
-
--- type LTyFamInstDecl pass = XRec pass (TyFamInstDecl pass)
 type LDataFamInstDecl pass = XRec pass ([FamEqn pass (HsDataDefn pass)])
--- type TyFamDefltDecl = TyFamInstDecl
 
 type family IdP p
 type instance IdP (GhcPass p) = IdGhcP p
 
 type LIdP p = XRec p (IdP p)
 
-data HsDataDefn pass 
+data HsDataDefn pass
 
 data FamEqn pass rhs
   = FamEqn
@@ -54,7 +51,9 @@ fffggg :: ClsInstDecl GhcRn -> [Int]
 fffggg ddd = -- let
       do
         FamEqn { feqn_tycon = L _ _
-               , feqn_rhs   = _ } {-:: FamEqn GhcRn (HsDataDefn GhcRn)-} <- unLoc $ cid_datafam_insts ddd
-        [ 0 ]
-
-
+               , feqn_rhs   = defns } :: FamEqn GhcRn (HsDataDefn GhcRn) <- unLoc $ cid_datafam_insts ddd
+        [ 0 ] ++ dataSubs defns
+  where
+    dataSubs :: HsDataDefn GhcRn
+             -> [Int]
+    dataSubs = undefined

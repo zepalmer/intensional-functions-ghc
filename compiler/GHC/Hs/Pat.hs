@@ -502,6 +502,7 @@ looksLazyPat (VarPat {})   = False
 looksLazyPat (WildPat {})  = False
 looksLazyPat _             = True
 
+
 isIrrefutableHsPat :: forall p. (OutputableBndrId p)
                    => DynFlags -> LPat (GhcPass p) -> Bool
 -- (isIrrefutableHsPat p) is true if matching against p cannot fail,

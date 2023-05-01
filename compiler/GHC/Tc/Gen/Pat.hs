@@ -20,6 +20,7 @@ module GHC.Tc.Gen.Pat
    , tcCheckPat, tcCheckPat_O, tcInferPat
    , tcPats
    , addDataConStupidTheta
+   , isIrrefutableHsPatRn
    )
 where
 
@@ -40,6 +41,7 @@ import GHC.Types.Id
 import GHC.Types.Var
 import GHC.Types.Name
 import GHC.Types.Name.Reader
+import GHC.Types.TypeEnv (lookupTypeEnv)
 import GHC.Core.Multiplicity
 import GHC.Tc.Utils.Concrete ( hasFixedRuntimeRep_syntactic )
 import GHC.Tc.Utils.Env
@@ -77,6 +79,7 @@ import GHC.Data.List.SetOps ( getNth )
 import Language.Haskell.Syntax.Basic (FieldLabelString(..))
 
 import Data.List( partition )
+import Data.Maybe (isJust)
 
 {-
 ************************************************************************
@@ -1619,3 +1622,45 @@ checkGADT conlike ex_tvs arg_tys = \case
   where
     has_existentials :: Bool
     has_existentials = any (`elemVarSet` tyCoVarsOfTypes arg_tys) ex_tvs
+
+
+isIrrefutableHsPatRn :: TcGblEnv -> Bool -> LPat GhcRn -> Bool
+isIrrefutableHsPatRn tc_env@(TcGblEnv{tcg_type_env = type_env}) is_strict pat = goL pat
+  where
+    goL :: LPat GhcRn -> Bool
+    goL = go . unLoc
+
+    go :: Pat GhcRn -> Bool
+    go (WildPat {})        = True
+    go (VarPat {})         = True
+    go (LazyPat _ p')
+      | is_strict
+      = isIrrefutableHsPatRn tc_env False p'
+      | otherwise          = True
+    go (BangPat _ pat)     = goL pat
+    go (ParPat _ _ pat _)  = goL pat
+    go (AsPat _ _ _ pat)   = goL pat
+    go (ViewPat _ _ pat)   = goL pat
+    go (SigPat _ pat _)    = goL pat
+    go (TuplePat _ pats _) = all goL pats
+    go (SumPat {})         = False
+                    -- See Note [Unboxed sum patterns aren't irrefutable]
+    go (ListPat {})        = False
+
+    go (ConPat
+        { pat_con  = L _ dcName
+        , pat_args = details }) = case lookupTypeEnv type_env dcName of
+                                    Just (ATyCon con) ->
+                                      isJust (tyConSingleDataCon_maybe con)
+                                      && all goL (hsConPatArgs details)
+                                    _ -> False -- conservative.
+    go (LitPat {})         = False
+    go (NPat {})           = False
+    go (NPlusKPat {})      = False
+
+    -- We conservatively assume that no TH splices are irrefutable
+    -- since we cannot know until the splice is evaluated.
+    go (SplicePat {})      = False
+
+    go (XPat ext)          = case ext of
+                               HsPatExpanded _ pat -> go pat

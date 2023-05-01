@@ -59,7 +59,6 @@ import GHC.Tc.Types.Evidence
 
 import GHC.Core.Multiplicity
 import GHC.Core.UsageEnv
-import GHC.Core.ConLike
 import GHC.Core.TyCon
 -- Create chunkified tuple types for monad comprehensions
 import GHC.Core.Make
@@ -81,6 +80,7 @@ import GHC.Types.Name
 import GHC.Types.Id
 import GHC.Types.SrcLoc
 import GHC.Types.Basic (Origin (..))
+import qualified GHC.LanguageExtensions as LangExt
 
 import Control.Monad
 import Control.Arrow ( second )
@@ -1237,8 +1237,8 @@ expand_do_stmts do_or_lc ((L _ (BindStmt xbsrn pat e)): lstmts)
   , fail_op              <- xbsrn_failOp xbsrn =
 -- the pattern binding x can fail
 -- instead of making an internal name, the fail block is just an anonymous match block
---      stmts ~~> stmt'    let /  = stmts';
---                             _ = fail "..";
+--      stmts ~~> stmt'    let / pat = stmts';
+--                               _   = fail "Pattern match failure .."
 --    -------------------------------------------------------
 --       pat <- e ; stmts   ~~> (>>=) e f
       do expand_stmts <- expand_do_stmts do_or_lc lstmts
@@ -1381,19 +1381,19 @@ mk_failable_lexpr_tcm :: LPat GhcRn -> LHsExpr GhcRn -> FailOperator GhcRn -> Tc
 -- generate a fail block even if it is not really needed. This would fail typechecking as
 -- a monad fail instance for such datatypes maynot be defined. cf. GHC.Hs.isIrrefutableHsPat
 mk_failable_lexpr_tcm pat lexpr fail_op =
-  do { ((tc_pat, _), _) <- tcInferPat (FRRBindStmt DoNotation)
-                           PatBindRhs pat $ return id -- whatever
-     ; dflags <- getDynFlags
-     ; traceTc "mk_fail_lexpr_tcm" (vcat [ppr tc_pat
-                                         , ppr $ isIrrefutableHsPat dflags tc_pat
-                                         , ppr $ isPatSynCon (unLoc tc_pat)])
-     ; if isIrrefutableHsPat dflags tc_pat -- don't decorate with fail statement if the pattern is irrefutable
-          || (isPatSynCon (unLoc tc_pat))  -- pattern syns always get a fail block while desugaring so skip
+  do { tc_env <- getGblEnv
+     ; is_strict <- xoptM LangExt.Strict
+     ; traceTc "mk_fail_lexpr_tcm" (vcat [ppr pat
+                                         , ppr $ isIrrefutableHsPatRn tc_env is_strict pat
+                                         ])
+
+     ; if isIrrefutableHsPatRn tc_env is_strict pat
+          -- don't decorate with fail statement if the pattern is irrefutable
+          -- pattern syns always get a fail block while desugaring so skip
        then return $ mkHsLam [pat] (noLocA (PopSrcSpan lexpr))
        else mk_fail_lexpr pat lexpr fail_op
      }
-  where isPatSynCon (ConPat {pat_con = L _ (PatSynCon _)}) = True
-        isPatSynCon _ = False
+  where
 
 -- makes the fail block
 -- TODO: check the discussion around MonadFail.fail type signature.
@@ -1401,9 +1401,9 @@ mk_failable_lexpr_tcm pat lexpr fail_op =
 mk_fail_lexpr :: LPat GhcRn -> LHsExpr GhcRn -> FailOperator GhcRn -> TcM (LHsExpr GhcRn)
 mk_fail_lexpr pat lexpr (Just (SyntaxExprRn fail_op)) =
   do  dflags <- getDynFlags
-      return $ noLocA (HsLam noExtField $ mkMatchGroup Generated   -- \
+      return $ noLocA (HsLam noExtField $ mkMatchGroup Generated            -- \
                       (noLocA [ mkHsCaseAlt pat (noLocA $ PopSrcSpan lexpr) --   pat -> expr
-                              , mkHsCaseAlt nlWildPatName          --   _   -> fail "fail pattern"
+                              , mkHsCaseAlt nlWildPatName                   --   _   -> fail "fail pattern"
                                 (noLocA $ genHsApp fail_op
                                  (mk_fail_msg_expr dflags (DoExpr Nothing) pat))
                               ]))
@@ -1415,3 +1415,10 @@ mk_fail_lexpr pat lexpr (Just (SyntaxExprRn fail_op)) =
                    <+> text "at" <+> ppr (getLocA pat)
 
 mk_fail_lexpr _ _ _ = pprPanic "mk_fail_lexpr: impossible happened" empty
+
+{- Note [Desugaring Do with HsExpansion]
+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+We expand do blocks before typeching it rather than after type checking it
+TODO expand using examples
+
+-}

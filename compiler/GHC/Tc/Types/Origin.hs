@@ -725,6 +725,7 @@ exprCtOrigin (HsUntypedSplice {})  = Shouldn'tHappenOrigin "TH untyped splice"
 exprCtOrigin (HsProc {})         = Shouldn'tHappenOrigin "proc"
 exprCtOrigin (HsStatic {})       = Shouldn'tHappenOrigin "static expression"
 exprCtOrigin (XExpr (HsExpanded a _)) = exprCtOrigin a
+exprCtOrigin (PopSrcSpan (L _ e)) = exprCtOrigin e
 
 -- | Extract a suitable CtOrigin from a MatchGroup
 matchesCtOrigin :: MatchGroup GhcRn (LHsExpr GhcRn) -> CtOrigin

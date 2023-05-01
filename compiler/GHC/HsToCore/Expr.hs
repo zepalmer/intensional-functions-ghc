@@ -858,14 +858,15 @@ warnDiscardedDoBindings rhs rhs_ty
 
 warnUnusedBindValue :: LHsExpr GhcTc -> LHsExpr GhcTc -> Type -> DsM ()
 warnUnusedBindValue fun arg arg_ty
-  | Just (SrcSpanAnn _ l, f) <- fish_var fun
+  | Just (SrcSpanAnn _ l, (L (SrcSpanAnn _ loc) f)) <- fish_var fun
   , is_gen_then f
   -- , isNoSrcSpan l
   = do tracePm "warnUnusedBindValue" (vcat [ text "fun" <+> ppr fun
                                            , text "arg" <+> ppr arg
                                            , text "arg_ty" <+> ppr arg_ty
                                            , text "f" <+> ppr f <+> ppr (is_gen_then f)
-                                           , text "l" <+> ppr (isNoSrcSpan l)])
+                                           , text "l" <+> ppr (isNoSrcSpan l) <+> ppr (isNoSrcSpan loc)
+                                           ])
        warnDiscardedDoBindings arg arg_ty
   where
     -- retrieve the location info and the head of the application
@@ -879,8 +880,8 @@ warnUnusedBindValue fun arg arg_ty
     fish_var _ = Nothing
 
     -- is this id a compiler generated (>>) with expanded do
-    is_gen_then :: LIdP GhcTc -> Bool
-    is_gen_then (L _ f) = f `hasKey` thenMClassOpKey
+    is_gen_then :: Id -> Bool
+    is_gen_then f = f `hasKey` thenMClassOpKey
 
 warnUnusedBindValue _ _ _  = return ()
 

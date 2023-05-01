@@ -729,8 +729,8 @@ ppr_expr (XExpr x) = case ghcPass @p of
 ppr_expr (PopSrcSpan x) = case ghcPass @p of
   GhcPs -> panic "ppr_expr Ps HsPopSrcSpan"
   GhcRn -> ppr x
-  GhcTc -> panic "ppr_expr Tc HsPopSrcSpan" 
-  
+  GhcTc -> panic "ppr_expr Tc HsPopSrcSpan"
+
 
 instance Outputable XXExprGhcTc where
   ppr (WrapExpr (HsWrap co_fn e))
@@ -1114,9 +1114,9 @@ data HsExpansion orig expanded
 -- | Just print the original expression (the @a@) with the expanded version (the @b@)
 instance (Outputable a, Outputable b) => Outputable (HsExpansion a b) where
   ppr (HsExpanded orig expanded)
-    = ifPprDebug (vcat [ppr orig, braces (text "Expansion:" <+> ppr expanded)])
-               (ppr orig)
-    -- = braces (ppr orig) $$ braces (text "Expansion:" <+> ppr expanded)
+    -- = ifPprDebug (vcat [ppr orig, braces (text "Expansion:" <+> ppr expanded)])
+    --            (ppr orig)
+    = braces (ppr orig) $$ braces (text "Expansion:" <+> ppr expanded)
 
 
 {-

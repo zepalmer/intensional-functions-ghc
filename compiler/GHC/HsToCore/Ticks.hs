@@ -605,6 +605,7 @@ addTickHsExpr (XExpr (HsTick t e)) =
         liftM (XExpr . HsTick t) (addTickLHsExprNever e)
 addTickHsExpr (XExpr (HsBinTick t0 t1 e)) =
         liftM (XExpr . HsBinTick t0 t1) (addTickLHsExprNever e)
+addTickHsExpr e@(PopSrcSpan _) = pprPanic "addTickHsExpr: impossible happen PopSrcSpan" (ppr e)
 
 addTickTupArg :: HsTupArg GhcTc -> TM (HsTupArg GhcTc)
 addTickTupArg (Present x e)  = do { e' <- addTickLHsExpr e

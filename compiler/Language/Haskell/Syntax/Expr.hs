@@ -587,7 +587,7 @@ data HsExpr p
   | PopSrcSpan (LHsExpr p)
   -- Placeholder for identifying generated source locations in GhcRn phase
   -- Should not presist post typechecking
-  -- Note [Desugaring Do with HsExpansion] TODO
+  -- Note [Desugaring Do with HsExpansion] in GHC.Tc.Gen.Match
 
 -- ---------------------------------------------------------------------
 
