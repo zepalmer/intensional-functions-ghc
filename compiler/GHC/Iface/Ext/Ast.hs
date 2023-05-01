@@ -1234,6 +1234,7 @@ instance HiePass p => ToHie (LocatedA (HsExpr (GhcPass p))) where
         ]
       HsGetField {} -> []
       HsProjection {} -> []
+      PopSrcSpan {} -> []
       XExpr x
         | HieTc <- hiePass @p
         -> case x of

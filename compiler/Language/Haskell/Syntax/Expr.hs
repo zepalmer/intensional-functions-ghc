@@ -584,6 +584,11 @@ data HsExpr p
   -- general idea, and Note [Rebindable syntax and HsExpansion] in GHC.Hs.Expr
   -- for an example of how we use it.
 
+  | PopSrcSpan (LHsExpr p)
+  -- Placeholder for identifying generated source locations in GhcRn phase
+  -- Should not presist post typechecking
+  -- Note [Desugaring Do with HsExpansion] TODO
+
 -- ---------------------------------------------------------------------
 
 data DotFieldOcc p

@@ -32,6 +32,7 @@ module GHC.Tc.Gen.Match
    , tcDoStmt
    , tcGuardStmt
    , checkArgCounts
+   , expandDoStmts
    )
 where
 
@@ -319,32 +320,34 @@ tcDoStmts ListComp (L l stmts) res_ty
                             (mkCheckExpType elt_ty)
         ; return $ mkHsWrapCo co (HsDo list_ty ListComp (L l stmts')) }
 
-tcDoStmts doExpr@(DoExpr _) (L l stmts) res_ty
-  = do  { --   stmts' <- tcStmts (HsDoStmt doExpr) tcDoStmt stmts res_ty
+tcDoStmts (DoExpr _) ss _
+  = pprPanic "tcDoStmts DoExpr" (ppr ss) -- do  {
+  --   stmts' <- tcStmts (HsDoStmt doExpr) tcDoStmt stmts res_ty
           -- ; res_ty <- readExpType res_ty
           -- ; return (HsDo res_ty doExpr (L l stmts'))
-          expand_expr <- expand_do_stmts doExpr stmts
-        ; let expand_do_expr = mkExpandedExpr (HsDo noExtField doExpr (L l stmts))
-                                               (unLoc expand_expr)
-                                        -- Do expansion on the fly
-        ; traceTc "tcDoStmts do" (vcat [ text "original:" <+> ppr expand_do_expr
-                                       , text "expanded:" <+> ppr expand_expr
-                                       ])
-        ; tcExpr expand_do_expr res_ty
-        }
+        --   expand_expr <- expand_do_stmts doExpr stmts
+        -- ; let expand_do_expr = mkExpandedExpr (HsDo noExtField doExpr (L l stmts))
+        --                                        (unLoc expand_expr)
+        --                                 -- Do expansion on the fly
+        -- ; traceTc "tcDoStmts do" (vcat [ text "original:" <+> ppr expand_do_expr
+        --                                , text "expanded:" <+> ppr expand_expr
+        --                                ])
+        -- ; tcExpr expand_do_expr res_ty
+     --   }
 
-tcDoStmts mDoExpr@(MDoExpr _) (L l stmts) res_ty
-  = do  { -- stmts' <- tcStmts (HsDoStmt mDoExpr) tcDoStmt stmts res_ty
-        -- ; res_ty <- readExpType res_ty
+tcDoStmts (MDoExpr _) ss _
+  = pprPanic "tcDoStmts MDoExpr" (ppr ss)
+  --do  { -- stmts' <- tcStmts (HsDoStmt mDoExpr) tcDoStmt stmts res_ty
+     -- ; res_ty <- readExpType res_ty
         -- ; return (HsDo res_ty mDoExpr (L l stmts'))
-          expand_expr <- expand_do_stmts mDoExpr stmts
-        ; let expand_do_expr = mkExpandedExpr (HsDo noExtField mDoExpr (L l stmts))
-                                              (unLoc expand_expr)
-                                       -- Do expansion on the fly
-        ; traceTc "tcDoStmts mdo" (text "tcExpr:" <+> ppr expand_do_expr)
-        ; tcExpr expand_do_expr res_ty
+        --   expand_expr <- expand_do_stmts mDoExpr stmts
+        -- ; let expand_do_expr = mkExpandedExpr (HsDo noExtField mDoExpr (L l stmts))
+        --                                       (unLoc expand_expr)
+        --                                -- Do expansion on the fly
+        -- ; traceTc "tcDoStmts mdo" (text "tcExpr:" <+> ppr expand_do_expr)
+        -- ; tcExpr expand_do_expr res_ty
 
-        }
+      --   }
 
 tcDoStmts MonadComp (L l stmts) res_ty
   = do  { stmts' <- tcStmts (HsDoStmt MonadComp) tcMcStmt stmts res_ty
@@ -1201,6 +1204,9 @@ checkArgCounts matchContext (MG { mg_alts = L _ (match1:matches) })
 *                                                                      *
 ************************************************************************
 -}
+expandDoStmts :: HsDoFlavour -> [ExprLStmt GhcRn] -> TcM (LHsExpr GhcRn)
+expandDoStmts = expand_do_stmts
+
 -- | Expand the Do statments so that it works fine with Quicklook
 --   See Note[Rebindable Do and Expanding Statements]
 -- ANI Questions: 1. What should be the location information in the expanded expression?
@@ -1230,7 +1236,9 @@ expand_do_stmts do_or_lc ((L _ (BindStmt xbsrn pat e)): lstmts)
   | SyntaxExprRn bind_op <- xbsrn_bindOp xbsrn
   , fail_op              <- xbsrn_failOp xbsrn =
 -- the pattern binding x can fail
---      stmts ~~> stmt'    let f pat = stmts'; f _ = fail ".."
+-- instead of making an internal name, the fail block is just an anonymous match block
+--      stmts ~~> stmt'    let /  = stmts';
+--                             _ = fail "..";
 --    -------------------------------------------------------
 --       pat <- e ; stmts   ~~> (>>=) e f
       do expand_stmts <- expand_do_stmts do_or_lc lstmts
@@ -1248,7 +1256,7 @@ expand_do_stmts do_or_lc ((L _ (BindStmt xbsrn pat e)): lstmts)
          expand_stmts <- expand_do_stmts do_or_lc lstmts
          return $ mkHsApps  (genLHsVar bindMName) -- (Prelude.>>=)
                             [ e
-                            , mkHsLam [pat] expand_stmts  -- (\ x -> stmts')
+                            , mkHsLam [pat] (noLocA $ PopSrcSpan expand_stmts)  -- (\ x -> stmts')
                             ]
 
 expand_do_stmts do_or_lc (L _ (LetStmt _ bnds) : lstmts) =
@@ -1265,9 +1273,9 @@ expand_do_stmts do_or_lc ((L _ (BodyStmt _ e (SyntaxExprRn f) _)) : lstmts) =
 --    ----------------------------------------------
 --      e ; stmts ~~> (>>) e stmts'
   do expand_stmts <- expand_do_stmts do_or_lc lstmts
-     return $ mkHsApps (wrapGenSpan f) -- (>>)
-                [ e               -- e
-                , expand_stmts ]  -- stmts'
+     return $ noLocA (PopSrcSpan (mkHsApps (wrapGenSpan f) -- (>>)
+                                   [ e               -- e
+                                   , expand_stmts ]))  -- stmts'
 
 expand_do_stmts do_or_lc
   ((L _ (RecStmt { recS_stmts = rec_stmts
@@ -1288,11 +1296,11 @@ expand_do_stmts do_or_lc
 --                                                 ; return (local_only_ids ++ later_ids) } ))
 --                              (\ [ local_only_ids ++ later_ids ] -> stmts')
   do expand_stmts <- expand_do_stmts do_or_lc lstmts
-     return $ (mkHsApps (genLHsVar bindMName)                            -- (Prelude.>>=)
-                      [ (wrapGenSpan mfix_fun) `mkHsApp` mfix_expr             -- (mfix (do block))
-                      , mkHsLam [ mkBigLHsVarPatTup all_ids ]             --        (\ x ->
-                                       expand_stmts                       --         stmts')
-                      ])
+     return $ mkHsApps (genLHsVar bindMName)                            -- (Prelude.>>=)
+                      [ (wrapGenSpan mfix_fun) `mkHsApp` mfix_expr           -- (mfix (do block))
+                      , mkHsLam [ mkBigLHsVarPatTup all_ids ]                --        (\ x ->
+                                       (noLocA $ PopSrcSpan expand_stmts)      --           stmts')
+                      ]
   where
     local_only_ids = local_ids \\ later_ids -- get unique local rec ids;
                                             --local rec ids and later ids can overlap
@@ -1376,9 +1384,12 @@ mk_failable_lexpr_tcm pat lexpr fail_op =
   do { ((tc_pat, _), _) <- tcInferPat (FRRBindStmt DoNotation)
                            PatBindRhs pat $ return id -- whatever
      ; dflags <- getDynFlags
+     ; traceTc "mk_fail_lexpr_tcm" (vcat [ppr tc_pat
+                                         , ppr $ isIrrefutableHsPat dflags tc_pat
+                                         , ppr $ isPatSynCon (unLoc tc_pat)])
      ; if isIrrefutableHsPat dflags tc_pat -- don't decorate with fail statement if the pattern is irrefutable
           || (isPatSynCon (unLoc tc_pat))  -- pattern syns always get a fail block while desugaring so skip
-       then return $ mkHsLam [pat] lexpr
+       then return $ mkHsLam [pat] (noLocA (PopSrcSpan lexpr))
        else mk_fail_lexpr pat lexpr fail_op
      }
   where isPatSynCon (ConPat {pat_con = L _ (PatSynCon _)}) = True
@@ -1391,7 +1402,7 @@ mk_fail_lexpr :: LPat GhcRn -> LHsExpr GhcRn -> FailOperator GhcRn -> TcM (LHsEx
 mk_fail_lexpr pat lexpr (Just (SyntaxExprRn fail_op)) =
   do  dflags <- getDynFlags
       return $ noLocA (HsLam noExtField $ mkMatchGroup Generated   -- \
-                      (noLocA [ mkHsCaseAlt pat lexpr              --   pat -> expr
+                      (noLocA [ mkHsCaseAlt pat (noLocA $ PopSrcSpan lexpr) --   pat -> expr
                               , mkHsCaseAlt nlWildPatName          --   _   -> fail "fail pattern"
                                 (noLocA $ genHsApp fail_op
                                  (mk_fail_msg_expr dflags (DoExpr Nothing) pat))

@@ -29,6 +29,7 @@ import GHC.HsToCore.Utils
 import GHC.HsToCore.Arrows
 import GHC.HsToCore.Monad
 import GHC.HsToCore.Pmc ( addTyCs, pmcGRHSs )
+import GHC.HsToCore.Pmc.Utils
 import GHC.HsToCore.Errors.Types
 import GHC.Types.SourceText
 import GHC.Types.Name
@@ -257,6 +258,8 @@ dsExpr (HsLit _ lit)
 dsExpr (HsOverLit _ lit)
   = do { warnAboutOverflowedOverLit lit
        ; dsOverLit lit }
+
+dsExpr e@(PopSrcSpan {}) = pprPanic "dsExpr" (ppr e)
 
 dsExpr e@(XExpr ext_expr_tc)
   = case ext_expr_tc of
@@ -857,15 +860,22 @@ warnUnusedBindValue :: LHsExpr GhcTc -> LHsExpr GhcTc -> Type -> DsM ()
 warnUnusedBindValue fun arg arg_ty
   | Just (SrcSpanAnn _ l, f) <- fish_var fun
   , is_gen_then f
-  , isNoSrcSpan l
-  = warnDiscardedDoBindings arg arg_ty
+  -- , isNoSrcSpan l
+  = do tracePm "warnUnusedBindValue" (vcat [ text "fun" <+> ppr fun
+                                           , text "arg" <+> ppr arg
+                                           , text "arg_ty" <+> ppr arg_ty
+                                           , text "f" <+> ppr f <+> ppr (is_gen_then f)
+                                           , text "l" <+> ppr (isNoSrcSpan l)])
+       warnDiscardedDoBindings arg arg_ty
   where
     -- retrieve the location info and the head of the application
     fish_var :: LHsExpr GhcTc -> Maybe (SrcSpanAnnA , LIdP GhcTc)
     fish_var (L l (HsVar _ id)) = return (l, id)
+    fish_var (L _ (PopSrcSpan e)) = pprPanic "warnUnusedBindValue" (ppr e)
     fish_var (L _ (HsAppType _ e _ _)) = fish_var e
     fish_var (L l (XExpr (WrapExpr (HsWrap _ e)))) = do (l, e') <- fish_var (L l e)
                                                         return (l, e')
+    fish_var (L l (XExpr (ExpansionExpr (HsExpanded _ e)))) = fish_var (L l e)
     fish_var _ = Nothing
 
     -- is this id a compiler generated (>>) with expanded do

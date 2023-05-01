@@ -114,6 +114,7 @@ hsExprType (HsIf _ _ t _) = lhsExprType t
 hsExprType (HsMultiIf ty _) = ty
 hsExprType (HsLet _ _ _ _ body) = lhsExprType body
 hsExprType (HsDo ty _ _) = ty
+hsExprType (PopSrcSpan expr) = pprPanic "hsExprType" (text "impossible happened PopSrcSpan" <+> ppr expr)
 hsExprType (ExplicitList ty _) = mkListTy ty
 hsExprType (RecordCon con_expr _ _) = hsExprType con_expr
 hsExprType (RecordUpd v _ _) = dataConCantHappen v

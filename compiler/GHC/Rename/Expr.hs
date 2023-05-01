@@ -560,6 +560,8 @@ rnExpr (ArithSeq _ _ seq)
            else
             return (ArithSeq noExtField Nothing new_seq, fvs) }
 
+rnExpr (PopSrcSpan _) = panic "impossible happened rnExpr PopSrcSpan"
+
 {-
 ************************************************************************
 *                                                                      *

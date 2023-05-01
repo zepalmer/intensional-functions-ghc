@@ -846,6 +846,8 @@ zonkExpr env (HsDo ty do_or_lc (L l stmts))
        new_ty <- zonkTcTypeToTypeX env ty
        return (HsDo new_ty do_or_lc (L l new_stmts))
 
+zonkExpr env (PopSrcSpan (L _ exp)) = zonkExpr env exp
+
 zonkExpr env (ExplicitList ty exprs)
   = do new_ty <- zonkTcTypeToTypeX env ty
        new_exprs <- zonkLExprs env exprs

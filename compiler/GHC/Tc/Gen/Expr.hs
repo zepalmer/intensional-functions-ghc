@@ -408,8 +408,32 @@ tcExpr (HsMultiIf _ alts) res_ty
        ; return (HsMultiIf res_ty alts') }
   where match_ctxt = MC { mc_what = IfAlt, mc_body = tcBody }
 
+tcExpr (HsDo _ doFlav@(DoExpr{}) (L loc stmts)) res_ty
+  = do { expand_expr <- expandDoStmts doFlav stmts
+       ; let expand_do_expr = mkExpandedExpr (HsDo noExtField doFlav (L loc stmts))
+                                               (unLoc expand_expr)
+                                        -- Do expansion on the fly
+       ; traceTc "tcDoStmts do" (vcat [ text "original:" <+> ppr expand_do_expr
+                                      , text "expanded:" <+> ppr expand_expr
+                                      ])
+       ; tcExpr expand_do_expr res_ty
+       }
+
+tcExpr (HsDo _ doFlav@(MDoExpr{}) (L loc stmts)) res_ty
+  = do { expand_expr <- expandDoStmts doFlav stmts
+       ; let expand_do_expr = mkExpandedExpr (HsDo noExtField doFlav (L loc stmts))
+                                               (unLoc expand_expr)
+                                        -- Do expansion on the fly
+       ; traceTc "tcDoStmts do" (vcat [ text "original:" <+> ppr expand_do_expr
+                                      , text "expanded:" <+> ppr expand_expr
+                                      ])
+       ; tcExpr expand_do_expr res_ty
+       }
+
 tcExpr (HsDo _ do_or_lc stmts) res_ty
   = tcDoStmts do_or_lc stmts res_ty
+
+tcExpr (PopSrcSpan (L _ expr)) res_ty = popErrCtxt $ tcExpr expr res_ty
 
 tcExpr (HsProc x pat cmd) res_ty
   = do  { (pat', cmd', coi) <- tcProc pat cmd res_ty
