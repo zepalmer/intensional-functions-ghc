@@ -44,6 +44,7 @@ data Opts = Opts
     , optDllwrap   :: ProgOpt
     , optUnregisterised :: Maybe Bool
     , optTablesNextToCode :: Maybe Bool
+    , optLdOverride :: Maybe Bool
     , optVerbosity :: Int
     , optKeepTemp  :: Bool
     }
@@ -65,6 +66,7 @@ emptyOpts = Opts
     , optWindres   = po0
     , optUnregisterised = Nothing
     , optTablesNextToCode = Nothing
+    , optLdOverride = Nothing -- See comment in Link on 'enableOverride'. Shouldn't we set the default here?
     , optVerbosity = 0
     , optKeepTemp  = False
     }
@@ -98,6 +100,9 @@ _optUnregisterised = Lens optUnregisterised (\x o -> o {optUnregisterised=x})
 _optTablesNextToCode :: Lens Opts (Maybe Bool)
 _optTablesNextToCode = Lens optTablesNextToCode (\x o -> o {optTablesNextToCode=x})
 
+_optLdOvveride :: Lens Opts (Maybe Bool)
+_optLdOvveride = Lens optLdOverride (\x o -> o {optLdOverride=x})
+
 _optVerbosity :: Lens Opts Int
 _optVerbosity = Lens optVerbosity (\x o -> o {optVerbosity=x})
 
@@ -114,6 +119,7 @@ options =
     concat
     [ enableDisable "unregisterised" "unregisterised backend" _optUnregisterised
     , enableDisable "tables-next-to-code" "Tables-next-to-code optimisation" _optTablesNextToCode
+    , enableDisable "ld-override" "override gcc's default linker" _optLdOvveride
     ] ++
     concat
     [ progOpts "cc" "C compiler" _optCc
@@ -235,13 +241,12 @@ determineTablesNextToCode
 determineTablesNextToCode archOs unreg userReq =
     case userReq of
       Just True
+        | not tntcSupported
+                        -> throwE "Tables-next-to-code not supported by this platform"
         | unreg         -> throwE "Tables-next-to-code cannot be used with unregisterised code generator"
-        | tntcSupported -> throwE "Tables-next-to-code not supported by this platform"
         | otherwise     -> return True
       Just False        -> return False
-      Nothing
-        | tntcSupported -> return True
-        | otherwise     -> return False
+      Nothing           -> pure tntcSupported
   where
     tntcSupported = tablesNextToCodeSupported archOs
 
@@ -253,7 +258,7 @@ mkTarget opts = do
     archOs <- parseTriple cc0 (optTriple opts)
     cc <- addPlatformDepCcFlags archOs cc0
     readelf <- optional $ findReadelf (optReadelf opts)
-    ccLink <- findCcLink (optCcLink opts) archOs cc readelf
+    ccLink <- findCcLink (optCcLink opts) (optLdOverride opts) archOs cc readelf
 
     ar <- findAr (optAr opts)
     ranlib <- if arNeedsRanlib ar

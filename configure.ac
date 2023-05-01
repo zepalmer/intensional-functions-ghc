@@ -446,6 +446,11 @@ FP_SET_CFLAGS_C99([CC],[CONF_CC_OPTS_STAGE2],[CONF_CPP_OPTS_STAGE2])
 dnl ** Which ld to use
 dnl --------------------------------------------------------------
 AC_ARG_VAR(LD,[Use as the path to ld. See also --disable-ld-override.])
+AC_ARG_ENABLE(ld-override,
+  [AS_HELP_STRING([--disable-ld-override],
+    [Prevent GHC from overriding the default linker used by gcc. If ld-override is disabled GHC will try to tell gcc to use whichever linker is selected by the LD environment variable. [default=override enabled]])],
+  [],
+  [enable_ld_override=yes])
 
 dnl ** Which objdump to use?
 dnl --------------------------------------------------------------

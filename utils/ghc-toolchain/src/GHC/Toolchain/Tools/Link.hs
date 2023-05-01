@@ -22,8 +22,8 @@ data CcLink = CcLink { ccLinkProgram :: Program
                      }
     deriving (Show, Read)
 
-findCcLink :: ProgOpt -> ArchOS -> Cc -> Maybe Readelf -> M CcLink
-findCcLink progOpt archOs cc readelf = checking "for C compiler for linking command" $ do
+findCcLink :: ProgOpt -> Maybe Bool -> ArchOS -> Cc -> Maybe Readelf -> M CcLink
+findCcLink progOpt ldOverride archOs cc readelf = checking "for C compiler for linking command" $ do
     ccLinkProgram <- case poPath progOpt of
         Just _ ->
             -- If the user specified a linker don't second-guess them
@@ -31,16 +31,16 @@ findCcLink progOpt archOs cc readelf = checking "for C compiler for linking comm
         Nothing -> do
             -- If not then try to find a decent linker on our own
             rawCcLink <- findProgram "C compiler for linking" progOpt [prgPath $ ccProgram cc]
-            findLinkFlags cc rawCcLink <|> pure rawCcLink
+            findLinkFlags ldOverride cc rawCcLink <|> pure rawCcLink
     ccLinkSupportsNoPie <- checkSupportsNoPie ccLinkProgram
     checkBfdCopyBug archOs cc readelf ccLinkProgram
     ccLinkProgram <- addPlatformDepLinkFlags archOs cc ccLinkProgram
     return $ CcLink {ccLinkProgram, ccLinkSupportsNoPie}
 
 -- | Try to convince @cc@ to use a more efficient linker than @bfd.ld@
-findLinkFlags :: Cc -> Program -> M Program
-findLinkFlags cc ccLink
-  | doLinkerSearch =
+findLinkFlags :: Maybe Bool -> Cc -> Program -> M Program
+findLinkFlags ldOverride cc ccLink
+  | enableOverride && doLinkerSearch =
     oneOf "this can't happen"
         [ -- Annoyingly, gcc silently falls back to vanilla ld (typically bfd
           -- ld) if @-fuse-ld@ is given with a non-existent linker.
@@ -54,6 +54,13 @@ findLinkFlags cc ccLink
         <|> (ccLink <$ checkLinkWorks cc ccLink)
   | otherwise =
     return ccLink
+  where
+    enableOverride = case ldOverride of
+                       -- ROMES: We're basically defining the default value here,
+                       -- wouldn't it be better to define the default on construction?
+                       Nothing    -> True 
+                       Just True  -> True
+                       Just False -> False
 
 -- | Should we attempt to find a more efficient linker on this platform?
 --
