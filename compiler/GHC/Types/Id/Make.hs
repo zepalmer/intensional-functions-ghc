@@ -1053,7 +1053,6 @@ dataConSrcToImplBang bang_opts fam_envs arg_ty
         arg_ty' = case mb_co of
                     { Just redn -> scaledSet arg_ty (reductionReducedType redn)
                     ; Nothing   -> arg_ty }
-  , all (not . isNewTyCon . fst) (splitTyConApp_maybe $ scaledThing arg_ty')
   , shouldUnpackTy bang_opts unpk_prag fam_envs arg_ty'
   = if bang_opt_unbox_disable bang_opts
     then HsStrict True -- Not unpacking because of -O0
@@ -1389,11 +1388,12 @@ shouldUnpackTy bang_opts prag fam_envs ty
           | (_:_:_) <- data_cons
           -> False -- Don't unpack sum types automatically, but they can
                    -- be unpacked with an explicit source UNPACK.
-          | otherwise
+          | otherwise   -- Wrinkle (W4) of Note [Recursive unboxing]
           -> bang_opt_unbox_strict bang_opts
              || (bang_opt_unbox_small bang_opts
                  && rep_tys `lengthAtMost` 1)  -- See Note [Unpack one-wide fields]
-      where (rep_tys, _) = dataConArgUnpack ty
+      where
+        (rep_tys, _) = dataConArgUnpack ty
 
 -- Given a type already assumed to have been normalized by topNormaliseType,
 -- unpackable_type_datacons ty = Just datacons
@@ -1496,12 +1496,25 @@ Wrinkles:
      field of `Unconsed`: we never unpack a sum type without an explicit
      pragma (see should_unpack).
 
-(W4) We behave conservatively when there is no UNPACK pragma
-        data T = MkS !T Int
-     with -funbox-strict-fields or -funbox-small-strict-fields
-     we behave as if there was an UNPACK pragma there.  "Conservative"
-     in the sense that we recurse more often, which may stop us unboxing
-     because we find a loop at the toot.
+(W4) Consider
+        data T = MkT !Wombat
+        data Wombat = MkW {-# UNPACK #-} !S Int
+        data S = MkS {-# NOUNPACK #-} !Wombat Int
+     Suppose we are deciding whether to unpack the first field of MkT, by
+     calling (shouldUnpackTy Wombat).  Then we'll try to unpack the !S field
+     of MkW, and be stopped by the {-# NOUNPACK #-}, and all is fine; we can
+     unpack MkT.
+
+     If that NOUNPACK had been a UNPACK, though, we'd get a loop, and would
+     decide not to unpack the Wombat field of MkT.
+
+     But what if there was no pragma in `data S`?  Then we /still/ decide not
+     to unpack the Wombat field of MkT (at least when auto-unpacking is on),
+     because we don't know for sure which decision will be taken for the
+     Wombat field of MkS.
+
+     TL;DR when there is no pragma, behave as if there was a UNPACK, at least
+     when auto-unpacking is on.  See `should_unpack` in `shouldUnpackTy`.
 
 ************************************************************************
 *                                                                      *
