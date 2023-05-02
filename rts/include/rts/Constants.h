@@ -215,6 +215,19 @@
 #define LDV_STATE_USE           0x40000000
 #endif /* SIZEOF_VOID_P */
 
+/*
+ * INVALID_GHC_POINTER is the bit-pattern used by the RTS to clear freed memory
+ * when +RTS -DZ is in use. The LOOKS_LIKE_*_PTR utilities use this macro to
+ * catch clearly invalid pointers
+ */
+#if !defined(INVALID_GHC_POINTER)
+#if SIZEOF_VOID_P== 4
+#define INVALID_GHC_POINTER 0xaaaaaaaa
+#else
+#define INVALID_GHC_POINTER 0xaaaaaaaaaaaaaaaa
+#endif
+#endif
+
 /* -----------------------------------------------------------------------------
    TSO related constants
    -------------------------------------------------------------------------- */

@@ -270,6 +270,12 @@ EXTERN_INLINE StgClosure *TAG_CLOSURE(StgWord tag,StgClosure * p)
    make sense...
    -------------------------------------------------------------------------- */
 
+EXTERN_INLINE bool LOOKS_LIKE_PTR (const void* p);
+EXTERN_INLINE bool LOOKS_LIKE_PTR (const void* p)
+{
+    return p && (p != (const void*) INVALID_GHC_POINTER);
+}
+
 EXTERN_INLINE bool LOOKS_LIKE_INFO_PTR_NOT_NULL (StgWord p);
 EXTERN_INLINE bool LOOKS_LIKE_INFO_PTR_NOT_NULL (StgWord p)
 {
@@ -280,12 +286,13 @@ EXTERN_INLINE bool LOOKS_LIKE_INFO_PTR_NOT_NULL (StgWord p)
 EXTERN_INLINE bool LOOKS_LIKE_INFO_PTR (StgWord p);
 EXTERN_INLINE bool LOOKS_LIKE_INFO_PTR (StgWord p)
 {
-    return p && (IS_FORWARDING_PTR(p) || LOOKS_LIKE_INFO_PTR_NOT_NULL(p));
+    return LOOKS_LIKE_PTR((const void*) p) && (IS_FORWARDING_PTR(p) || LOOKS_LIKE_INFO_PTR_NOT_NULL(p));
 }
 
 EXTERN_INLINE bool LOOKS_LIKE_CLOSURE_PTR (const void *p);
 EXTERN_INLINE bool LOOKS_LIKE_CLOSURE_PTR (const void *p)
 {
+    if (!LOOKS_LIKE_PTR(p)) return false;
     const StgInfoTable *info = RELAXED_LOAD(&UNTAG_CONST_CLOSURE((const StgClosure *) (p))->header.info);
     return LOOKS_LIKE_INFO_PTR((StgWord) info);
 }
