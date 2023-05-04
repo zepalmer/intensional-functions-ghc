@@ -89,7 +89,7 @@
 	ignore = untracked
 [submodule "utils/haddock"]
 	path = utils/haddock
-	url = git.bahj.com:intensional-functions-ghc-haddock
+	url = https://github.com/zepalmer/intensional-functions-ghc-haddock.git
 	ignore = untracked
 	branch = hsitsfun
 [submodule "nofib"]
