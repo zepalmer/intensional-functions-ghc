@@ -150,7 +150,7 @@ data LlvmStatement
       * value: Variable/Constant to store.
       * ptr:   Location to store the value in
   -}
-  | Store LlvmVar LlvmVar
+  | Store LlvmVar LlvmVar LMAlign
 
   {- |
     Multiway branch
@@ -252,7 +252,7 @@ data LlvmExpression
   {- |
     Load the value at location ptr
   -}
-  | Load LlvmVar
+  | Load LlvmVar LMAlign
 
   {- |
     Atomic load of the value at location ptr

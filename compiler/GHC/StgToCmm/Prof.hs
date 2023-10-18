@@ -82,7 +82,7 @@ mkCCostCentreStack ccs = CmmLabel (mkCCSLabel ccs)
 costCentreFrom :: Platform
                -> CmmExpr        -- A closure pointer
                -> CmmExpr        -- The cost centre from that closure
-costCentreFrom platform cl = CmmLoad (cmmOffsetB platform cl (pc_OFFSET_StgHeader_ccs (platformConstants platform))) (ccsType platform)
+costCentreFrom platform cl = CmmLoad (cmmOffsetB platform cl (pc_OFFSET_StgHeader_ccs (platformConstants platform))) (ccsType platform) NaturallyAligned
 
 -- | The profiling header words in a static closure
 staticProfHdr :: Profile -> CostCentreStack -> [CmmLit]
@@ -397,7 +397,7 @@ ldvEnter cl_ptr = do
         -- don't forget to subtract node's tag
         ldv_wd = ldvWord platform cl_ptr
         new_ldv_wd = cmmOrWord platform
-                        (cmmAndWord platform (CmmLoad ldv_wd (bWord platform))
+                        (cmmAndWord platform (cmmLoadBWord platform ldv_wd)
                                              (CmmLit (mkWordCLit platform (pc_ILDV_CREATE_MASK constants))))
                         (cmmOrWord platform (loadEra platform) (CmmLit (mkWordCLit platform (pc_ILDV_STATE_USE constants))))
     ifProfiling $
@@ -411,7 +411,8 @@ ldvEnter cl_ptr = do
 loadEra :: Platform -> CmmExpr
 loadEra platform = CmmMachOp (MO_UU_Conv (cIntWidth platform) (wordWidth platform))
     [CmmLoad (mkLblExpr (mkRtsCmmDataLabel (fsLit "era")))
-             (cInt platform)]
+             (cInt platform)
+             NaturallyAligned]
 
 -- | Takes the address of a closure, and returns
 -- the address of the LDV word in the closure

@@ -146,18 +146,20 @@ addToMemLbl rep lbl n = addToMem rep (CmmLit (CmmLabel lbl)) n
 addToMemLblE :: CmmType -> CLabel -> CmmExpr -> CmmAGraph
 addToMemLblE rep lbl = addToMemE rep (CmmLit (CmmLabel lbl))
 
+-- | @addToMem rep ptr n@ adds @n@ to the integer pointed-to by @ptr@.
 addToMem :: CmmType     -- rep of the counter
-         -> CmmExpr     -- Address
+         -> CmmExpr     -- Naturally-aligned address
          -> Int         -- What to add (a word)
          -> CmmAGraph
 addToMem rep ptr n = addToMemE rep ptr (CmmLit (CmmInt (toInteger n) (typeWidth rep)))
 
+-- | @addToMemE rep ptr n@ adds @n@ to the integer pointed-to by @ptr@.
 addToMemE :: CmmType    -- rep of the counter
-          -> CmmExpr    -- Address
+          -> CmmExpr    -- Naturally-aligned address
           -> CmmExpr    -- What to add (a word-typed expression)
           -> CmmAGraph
 addToMemE rep ptr n
-  = mkStore ptr (CmmMachOp (MO_Add (typeWidth rep)) [CmmLoad ptr rep, n])
+  = mkStore ptr (CmmMachOp (MO_Add (typeWidth rep)) [CmmLoad ptr rep NaturallyAligned, n])
 
 
 -------------------------------------------------------------------------
@@ -177,7 +179,8 @@ mkTaggedObjectLoad platform reg base offset tag
              (CmmLoad (cmmOffsetB platform
                                   (CmmReg (CmmLocal base))
                                   (offset - tag))
-                      (localRegType reg))
+                      (localRegType reg)
+                      NaturallyAligned)
 
 -------------------------------------------------------------------------
 --
@@ -188,7 +191,7 @@ mkTaggedObjectLoad platform reg base offset tag
 
 tagToClosure :: Platform -> TyCon -> CmmExpr -> CmmExpr
 tagToClosure platform tycon tag
-  = CmmLoad (cmmOffsetExprW platform closure_tbl tag) (bWord platform)
+  = cmmLoadBWord platform (cmmOffsetExprW platform closure_tbl tag)
   where closure_tbl = CmmLit (CmmLabel lbl)
         lbl = mkClosureTableLabel (tyConName tycon) NoCafRefs
 
@@ -281,7 +284,9 @@ callerSaveGlobalReg platform reg
 callerRestoreGlobalReg :: Platform -> GlobalReg -> CmmAGraph
 callerRestoreGlobalReg platform reg
     = mkAssign (CmmGlobal reg)
-               (CmmLoad (get_GlobalReg_addr platform reg) (globalRegType platform reg))
+               (CmmLoad (get_GlobalReg_addr platform reg)
+                        (globalRegType platform reg)
+                        NaturallyAligned)
 
 
 -------------------------------------------------------------------------
@@ -330,8 +335,7 @@ assignTemp :: CmmExpr -> FCode LocalReg
 -- the optimization pass doesn't have to do as much work)
 assignTemp (CmmReg (CmmLocal reg)) = return reg
 assignTemp e = do { platform <- getPlatform
-                  ; uniq <- newUnique
-                  ; let reg = LocalReg uniq (cmmExprType platform e)
+                  ; reg <- newTemp (cmmExprType platform e)
                   ; emitAssign (CmmLocal reg) e
                   ; return reg }
 
@@ -615,7 +619,7 @@ whenUpdRemSetEnabled code = do
     platform <- getPlatform
     do_it <- getCode code
     let
-      enabled = CmmLoad (CmmLit $ CmmLabel mkNonmovingWriteBarrierEnabledLabel) (bWord platform)
+      enabled = cmmLoadBWord platform (CmmLit $ CmmLabel mkNonmovingWriteBarrierEnabledLabel)
       zero = zeroExpr platform
       is_enabled = cmmNeWord platform enabled zero
     the_if <- mkCmmIfThenElse' is_enabled do_it mkNop (Just False)

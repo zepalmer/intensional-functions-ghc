@@ -351,3 +351,11 @@ test('T19360', only_ways(['optasm']), compile, [''])
 # If the test goes wrong we'll get more case expressions in the output
 test('T19581', [ grep_errmsg(r'case') ], compile, ['-O -ddump-simpl -dsuppress-uniques'])
 test('T20112',  normal, multimod_compile, ['T20112', '-O -v0 -g1'])
+
+# T19586 should not generate missed specialisation warnings
+test('T19586', normal, compile, [''])
+test('T20639', normal, compile, ['-O2'])
+
+test('T20894', normal, compile, ['-dcore-lint -O1 -ddebug-output'])
+test('T19790',  normal, compile, ['-O -ddump-rule-firings'])
+test('T20200', normal, compile, [''])

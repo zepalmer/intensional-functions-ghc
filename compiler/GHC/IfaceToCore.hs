@@ -1421,6 +1421,7 @@ tcIfaceUnivCoProv :: IfaceUnivCoProv -> IfL UnivCoProvenance
 tcIfaceUnivCoProv (IfacePhantomProv kco)    = PhantomProv <$> tcIfaceCo kco
 tcIfaceUnivCoProv (IfaceProofIrrelProv kco) = ProofIrrelProv <$> tcIfaceCo kco
 tcIfaceUnivCoProv (IfacePluginProv str)     = return $ PluginProv str
+tcIfaceUnivCoProv (IfaceCorePrepProv b)     = return $ CorePrepProv b
 
 {-
 ************************************************************************
@@ -1536,9 +1537,9 @@ tcIfaceExpr (IfaceLet (IfaceRec pairs) body)
 tcIfaceExpr (IfaceTick tickish expr) = do
     expr' <- tcIfaceExpr expr
     -- If debug flag is not set: Ignore source notes
-    dbgLvl <- fmap debugLevel getDynFlags
+    need_notes <- needSourceNotes <$> getDynFlags
     case tickish of
-      IfaceSource{} | dbgLvl == 0
+      IfaceSource{} | not (need_notes)
                     -> return expr'
       _otherwise    -> do
         tickish' <- tcIfaceTickish tickish

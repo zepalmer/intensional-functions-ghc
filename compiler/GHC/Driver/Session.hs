@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE LambdaCase #-}
 
 -------------------------------------------------------------------------------
 --
@@ -41,6 +42,7 @@ module GHC.Driver.Session (
         DynamicTooState(..), dynamicTooState, setDynamicNow, setDynamicTooFailed,
         dynamicOutputFile, dynamicOutputHi,
         sccProfilingEnabled,
+        needSourceNotes,
         DynFlags(..),
         outputFile, hiSuf, objectSuf, ways,
         FlagSpec(..),
@@ -881,13 +883,28 @@ opt_i                 :: DynFlags -> [String]
 opt_i dflags= toolSettings_opt_i $ toolSettings dflags
 
 -- | The directory for this version of ghc in the user's app directory
--- (typically something like @~/.ghc/x86_64-linux-7.6.3@)
+-- The appdir used to be in ~/.ghc but to respect the XDG specification
+-- we want to move it under $XDG_DATA_HOME/
+-- However, old tooling (like cabal) might still write package environments
+-- to the old directory, so we prefer that if a subdirectory of ~/.ghc
+-- with the correct target and GHC version suffix exists.
 --
+-- i.e. if ~/.ghc/$UNIQUE_SUBDIR exists we use that
+-- otherwise we use $XDG_DATA_HOME/$UNIQUE_SUBDIR
+--
+-- UNIQUE_SUBDIR is typically a combination of the target platform and GHC version
 versionedAppDir :: String -> ArchOS -> MaybeT IO FilePath
 versionedAppDir appname platform = do
   -- Make sure we handle the case the HOME isn't set (see #11678)
-  appdir <- tryMaybeT $ getXdgDirectory XdgData appname
-  return $ appdir </> versionedFilePath platform
+  -- We need to fallback to the old scheme if the subdirectory exists.
+  msum $ map (checkIfExists <=< fmap (</> versionedFilePath platform))
+       [ tryMaybeT $ getAppUserDataDirectory appname  -- this is ~/.ghc/
+       , tryMaybeT $ getXdgDirectory XdgData appname -- this is $XDG_DATA_HOME/
+       ]
+  where
+    checkIfExists dir = tryMaybeT (doesDirectoryExist dir) >>= \case
+      True -> pure dir
+      False -> MaybeT (pure Nothing)
 
 versionedFilePath :: ArchOS -> FilePath
 versionedFilePath platform = uniqueSubdir platform
@@ -2094,6 +2111,12 @@ dynamic_flags_deps = [
       (NoArg (setGeneralFlag Opt_SingleLibFolder))
   , make_ord_flag defGhcFlag "pie"            (NoArg (setGeneralFlag Opt_PICExecutable))
   , make_ord_flag defGhcFlag "no-pie"         (NoArg (unSetGeneralFlag Opt_PICExecutable))
+  , make_ord_flag defGhcFlag "fcompact-unwind"
+      (noArgM (\dflags -> do
+       if platformOS (targetPlatform dflags) == OSDarwin
+          then return (gopt_set dflags Opt_CompactUnwind)
+          else do addWarn "-compact-unwind is only implemented by the darwin platform. Ignoring."
+                  return dflags))
 
         ------- Specific phases  --------------------------------------------
     -- need to appear before -pgmL to be parsed as LLVM flags.
@@ -3233,7 +3256,9 @@ wWarningFlagsDeps = [
   flagSpec "invalid-haddock"             Opt_WarnInvalidHaddock,
   flagSpec "operator-whitespace-ext-conflict"  Opt_WarnOperatorWhitespaceExtConflict,
   flagSpec "operator-whitespace"         Opt_WarnOperatorWhitespace,
-  flagSpec "implicit-lift"               Opt_WarnImplicitLift
+  flagSpec "implicit-lift"               Opt_WarnImplicitLift,
+  flagSpec "unicode-bidirectional-format-characters"
+                                         Opt_WarnUnicodeBidirectionalFormatCharacters
  ]
 
 -- | These @-\<blah\>@ flags can all be reversed with @-no-\<blah\>@
@@ -3386,6 +3411,7 @@ fFlagsDeps = [
   flagSpec "solve-constant-dicts"             Opt_SolveConstantDicts,
   flagSpec "catch-bottoms"                    Opt_CatchBottoms,
   flagSpec "alignment-sanitisation"           Opt_AlignmentSanitisation,
+  flagSpec "check-prim-bounds"                Opt_DoBoundsChecking,
   flagSpec "num-constant-folding"             Opt_NumConstantFolding,
   flagSpec "show-warning-groups"              Opt_ShowWarnGroups,
   flagSpec "hide-source-paths"                Opt_HideSourcePaths,
@@ -4902,6 +4928,11 @@ isBmi2Enabled dflags = case platformArch (targetPlatform dflags) of
 -- | Indicate if cost-centre profiling is enabled
 sccProfilingEnabled :: DynFlags -> Bool
 sccProfilingEnabled dflags = profileIsProfiling (targetProfile dflags)
+
+-- | Indicate whether we need to generate source notes
+needSourceNotes :: DynFlags -> Bool
+needSourceNotes dflags = debugLevel dflags > 0
+                       || gopt Opt_InfoTableMap dflags
 
 -- -----------------------------------------------------------------------------
 -- Linker/compiler information

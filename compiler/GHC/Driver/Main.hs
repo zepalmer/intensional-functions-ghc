@@ -43,6 +43,7 @@ module GHC.Driver.Main
     , Messager, batchMsg
     , HscStatus (..)
     , hscIncrementalCompile
+    , initModDetails
     , hscMaybeWriteIface
     , hscCompileCmmFile
 
@@ -98,6 +99,7 @@ import GHC.Driver.Errors
 import GHC.Driver.CodeOutput
 import GHC.Driver.Config
 import GHC.Driver.Hooks
+import GHC.Parser.Errors
 
 import GHC.Runtime.Context
 import GHC.Runtime.Interpreter ( addSptEntry, hscInterp )
@@ -143,7 +145,6 @@ import GHC.Core.FamInstEnv
 import GHC.CoreToStg.Prep
 import GHC.CoreToStg    ( coreToStg )
 
-import GHC.Parser.Errors
 import GHC.Parser.Errors.Ppr
 import GHC.Parser
 import GHC.Parser.Lexer as Lexer
@@ -230,6 +231,7 @@ import Data.Functor
 import Control.DeepSeq (force)
 import Data.Bifunctor (first, bimap)
 import GHC.Data.Maybe
+import Data.List.NonEmpty (NonEmpty ((:|)))
 
 #include "HsVersions.h"
 
@@ -417,6 +419,14 @@ hscParse' mod_summary
                Nothing -> liftIO $ hGetStringBuffer src_filename
 
     let loc = mkRealSrcLoc (mkFastString src_filename) 1 1
+
+    when (wopt Opt_WarnUnicodeBidirectionalFormatCharacters dflags) $ do
+      case checkBidirectionFormatChars (PsLoc loc (BufPos 0)) buf of
+        Nothing -> pure ()
+        Just chars ->
+          logWarnings $ unitBag $ pprWarning $
+               PsWarnBidirectionalFormatChars chars
+
     let parseMod | HsigFile == ms_hsc_src mod_summary
                  = parseSignature
                  | otherwise = parseModule
@@ -474,9 +484,34 @@ hscParse' mod_summary
             hsc_env <- getHscEnv
             withPlugins hsc_env applyPluginAction res
 
+checkBidirectionFormatChars :: PsLoc -> StringBuffer -> Maybe (NonEmpty (PsLoc, Char, String))
+checkBidirectionFormatChars start_loc sb
+  | containsBidirectionalFormatChar sb = Just $ go start_loc sb
+  | otherwise = Nothing
+  where
+    go :: PsLoc -> StringBuffer -> NonEmpty (PsLoc, Char, String)
+    go loc sb
+      | atEnd sb = panic "checkBidirectionFormatChars: no char found"
+      | otherwise = case nextChar sb of
+          (chr, sb)
+            | Just desc <- lookup chr bidirectionalFormatChars ->
+                (loc, chr, desc) :| go1 (advancePsLoc loc chr) sb
+            | otherwise -> go (advancePsLoc loc chr) sb
+
+    go1 :: PsLoc -> StringBuffer -> [(PsLoc, Char, String)]
+    go1 loc sb
+      | atEnd sb = []
+      | otherwise = case nextChar sb of
+          (chr, sb)
+            | Just desc <- lookup chr bidirectionalFormatChars ->
+                (loc, chr, desc) : go1 (advancePsLoc loc chr) sb
+            | otherwise -> go1 (advancePsLoc loc chr) sb
+
 
 -- -----------------------------------------------------------------------------
 -- | If the renamed source has been kept, extract it. Dump it if requested.
+
+
 extract_renamed_stuff :: ModSummary -> TcGblEnv -> Hsc RenamedStuff
 extract_renamed_stuff mod_summary tc_result = do
     let rn_info = getRenamedStuff tc_result
@@ -813,18 +848,7 @@ hscIncrementalCompile always_do_basic_recompilation_check m_tc_result
         -- We didn't need to do any typechecking; the old interface
         -- file on disk was good enough.
         Left iface -> do
-            -- Knot tying!  See Note [Knot-tying typecheckIface]
-            details <- liftIO . fixIO $ \details' -> do
-                let hsc_env' =
-                        hsc_env {
-                            hsc_HPT = addToHpt (hsc_HPT hsc_env)
-                                        (ms_mod_name mod_summary) (HomeModInfo iface details' Nothing)
-                        }
-                -- NB: This result is actually not that useful
-                -- in one-shot mode, since we're not going to do
-                -- any further typechecking.  It's much more useful
-                -- in make mode, since this HMI will go into the HPT.
-                genModDetails hsc_env' iface
+            details <- liftIO $ initModDetails hsc_env mod_summary iface
             return (HscUpToDate iface details, hsc_env')
         -- We finished type checking.  (mb_old_hash is the hash of
         -- the interface that existed on disk; it's possible we had
@@ -833,6 +857,67 @@ hscIncrementalCompile always_do_basic_recompilation_check m_tc_result
         Right (FrontendTypecheck tc_result, mb_old_hash) -> do
             status <- finish mod_summary tc_result mb_old_hash
             return (status, hsc_env)
+
+-- Knot tying!  See Note [Knot-tying typecheckIface]
+-- See Note [ModDetails and --make mode]
+initModDetails :: HscEnv -> ModSummary -> ModIface -> IO ModDetails
+initModDetails hsc_env mod_summary iface =
+  fixIO $ \details' -> do
+    let hsc_env' =
+          hsc_env {
+              hsc_HPT = addToHpt (hsc_HPT hsc_env)
+                          (ms_mod_name mod_summary)
+                          (HomeModInfo iface details' Nothing)
+                  }
+    -- NB: This result is actually not that useful
+    -- in one-shot mode, since we're not going to do
+    -- any further typechecking.  It's much more useful
+    -- in make mode, since this HMI will go into the HPT.
+    genModDetails hsc_env' iface
+
+
+{-
+Note [ModDetails and --make mode]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An interface file consists of two parts
+
+* The `ModIface` which ends up getting written to disk.
+  The `ModIface` is a completely acyclic tree, which can be serialised
+  and de-serialised completely straightforwardly.  The `ModIface` is
+  also the structure that is finger-printed for recompilation control.
+
+* The `ModDetails` which provides a more structured view that is suitable
+  for usage during compilation.  The `ModDetails` is heavily cyclic:
+  An `Id` contains a `Type`, which mentions a `TyCon` that contains kind
+  that mentions other `TyCons`; the `Id` also includes an unfolding that
+  in turn mentions more `Id`s;  And so on.
+
+The `ModIface` can be created from the `ModDetails` and the `ModDetails` from
+a `ModIface`.
+
+During tidying, just before interfaces are written to disk,
+the ModDetails is calculated and then converted into a ModIface (see GHC.Iface.Make.mkIface_).
+Then when GHC needs to restart typechecking from a certain point it can read the
+interface file, and regenerate the ModDetails from the ModIface (see GHC.IfaceToCore.typecheckIface).
+The key part about the loading is that the ModDetails is regenerated lazily
+from the ModIface, so that there's only a detailed in-memory representation
+for declarations which are actually used from the interface. This mode is
+also used when reading interface files from external packages.
+
+In the old --make mode implementation, the interface was written after compiling a module
+but the in-memory ModDetails which was used to compute the ModIface was retained.
+The result was that --make mode used much more memory than `-c` mode, because a large amount of
+information about a module would be kept in the ModDetails but never used.
+
+The new idea is that even in `--make` mode, when there is an in-memory `ModDetails`
+at hand, we re-create the `ModDetails` from the `ModIface`. Doing this means that
+we only have to keep the `ModIface` decls in memory and then lazily load
+detailed representations if needed. It turns out this makes a really big difference
+to memory usage, halving maximum memory used in some cases.
+
+See !5492 and #13586
+-}
 
 -- Runs the post-typechecking frontend (desugar and simplify). We want to
 -- generate most of the interface as late as possible. This gets us up-to-date
@@ -887,7 +972,6 @@ finish summary tc_result mb_old_hash = do
 
           return HscRecomp { hscs_guts = cg_guts,
                              hscs_mod_location = ms_location summary,
-                             hscs_mod_details = details,
                              hscs_partial_iface = partial_iface,
                              hscs_old_iface_hash = mb_old_hash
                            }

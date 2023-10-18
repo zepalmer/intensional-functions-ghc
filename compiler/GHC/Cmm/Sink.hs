@@ -580,9 +580,9 @@ regsUsedIn ls e = go ls e False
         use _ls _ z = z
 
         go :: LRegSet -> CmmExpr -> Bool -> Bool
-        go ls (CmmMachOp _ es) z = foldr (go ls) z es
-        go ls (CmmLoad addr _) z = go ls addr z
-        go ls e                z = use ls e z
+        go ls (CmmMachOp _ es)   z = foldr (go ls) z es
+        go ls (CmmLoad addr _ _) z = go ls addr z
+        go ls e                  z = use ls e z
 
 -- we don't inline into CmmUnsafeForeignCall if the expression refers
 -- to global registers.  This is a HACK to avoid global registers
@@ -611,7 +611,7 @@ conflicts platform (r, rhs, addr) node
   | foldRegsUsed platform (\b r' -> r == r' || b) False node        = True
 
   -- (3) a store to an address conflicts with a read of the same memory
-  | CmmStore addr' e <- node
+  | CmmStore addr' e _ <- node
   , memConflicts addr (loadAddr platform addr' (cmmExprWidth platform e)) = True
 
   -- (4) an assignment to Hp/Sp conflicts with a heap/stack read respectively
@@ -786,9 +786,9 @@ memConflicts (SpMem o1 w1) (SpMem o2 w2)
 memConflicts _         _         = True
 
 exprMem :: Platform -> CmmExpr -> AbsMem
-exprMem platform (CmmLoad addr w)  = bothMems (loadAddr platform addr (typeWidth w)) (exprMem platform addr)
-exprMem platform (CmmMachOp _ es)  = foldr bothMems NoMem (map (exprMem platform) es)
-exprMem _        _                 = NoMem
+exprMem platform (CmmLoad addr w _)  = bothMems (loadAddr platform addr (typeWidth w)) (exprMem platform addr)
+exprMem platform (CmmMachOp _ es)    = foldr bothMems NoMem (map (exprMem platform) es)
+exprMem _        _                   = NoMem
 
 loadAddr :: Platform -> CmmExpr -> Width -> AbsMem
 loadAddr platform e w =

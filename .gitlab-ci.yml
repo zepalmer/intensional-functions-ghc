@@ -487,7 +487,7 @@ release-x86_64-freebsd:
 # x86_64-darwin
 #################################
 
-validate-x86_64-darwin:
+.build-x86_64-darwin:
   extends: .validate-hadrian
   stage: full-build
   tags:
@@ -498,8 +498,6 @@ validate-x86_64-darwin:
 
   variables:
     BUILD_FLAVOUR: "validate"
-    GHC_VERSION: 8.10.4
-    CABAL_INSTALL_VERSION: 3.2.0.0
     BIN_DIST_PREP_TAR_COMP: "ghc-x86_64-apple-darwin.tar.xz"
     MACOSX_DEPLOYMENT_TARGET: "10.7"
     # Only Sierra and onwards supports clock_gettime. See #12858
@@ -523,9 +521,6 @@ validate-x86_64-darwin:
     BROKEN_TESTS: "Capi_Ctype_001 Capi_Ctype_002 T12010"
     # Due to #19025
     IGNORE_PERF_FAILURES: "all"
-  after_script:
-    - .gitlab/ci.sh clean
-    - cat ci-timings
 
   script: |
     nix build -f .gitlab/darwin/toolchain.nix --argstr system x86_64-darwin -o toolchain.sh
@@ -545,16 +540,31 @@ validate-x86_64-darwin:
     .gitlab/ci.sh test_hadrian
     .gitlab/ci.sh save_cache
 
+  after_script:
+    - .gitlab/ci.sh clean
+    - cat ci-timings
+
   artifacts:
     when: always
     expire_in: 2 week
 
-validate-aarch64-darwin:
+validate-x86_64-darwin:
+  extends: .build-x86_64-darwin
+
+release-x86_64-darwin:
+  <<: *release
+  extends: .build-x86_64-darwin
+  stage: full-build
+
+#################################
+# aarch64-darwin
+#################################
+
+.build-aarch64-darwin:
   extends: .validate-hadrian
   stage: full-build
   tags:
     - aarch64-darwin-m1
-
   # for now make this non mandatory to pass.
   allow_failure: true
 
@@ -562,8 +572,6 @@ validate-aarch64-darwin:
     BUILD_FLAVOUR: "validate"
     TEST_TYPE: test
     MAKE_ARGS: "-Werror"
-    GHC_VERSION: 8.10.3
-    CABAL_INSTALL_VERSION: 3.2.0.0
     BIN_DIST_PREP_TAR_COMP: "ghc-arm64-apple-darwin.tar.xz"
     # we run on M1's for now, getconf can't be built with nix yet,
     # and we use a pure shell, so we can't/shouldn't use /usr/bin/getconf
@@ -577,9 +585,6 @@ validate-aarch64-darwin:
     TEST_ENV: "aarch64-darwin-hadrian"
     # Capi_Ctype_001 Capi_Ctype_002 T12010: Due to #20393
     BROKEN_TESTS: "Capi_Ctype_001 Capi_Ctype_002 T12010"
-  after_script:
-    - .gitlab/ci.sh clean
-    - cat ci-timings
 
   # I wish we could just use the nix #! logic, but we can't --run and -i bash
   # behave very differently. -i bash does not pass any nix related env vars
@@ -602,9 +607,21 @@ validate-aarch64-darwin:
     .gitlab/ci.sh test_hadrian
     .gitlab/ci.sh save_cache
 
+  after_script:
+    - .gitlab/ci.sh clean
+    - cat ci-timings
+
   artifacts:
     when: always
     expire_in: 2 week
+
+validate-aarch64-darwin:
+  extends: .build-aarch64-darwin
+
+release-aarch64-darwin:
+  <<: *release
+  extends: .build-aarch64-darwin
+  stage: full-build
 
 .validate-linux:
   extends: .validate
@@ -646,6 +663,10 @@ validate-aarch64-linux-deb10:
   artifacts:
     when: always
     expire_in: 2 week
+
+release-aarch64-linux-deb10:
+  <<: *release
+  extends: .build-aarch64-linux-deb10
 
 nightly-aarch64-linux-deb10:
   <<: *nightly
@@ -731,6 +752,10 @@ validate-i386-linux-deb9:
   artifacts:
     when: always
     expire_in: 2 week
+
+release-i386-linux-deb9:
+  <<: *release
+  extends: .build-i386-linux-deb9
 
 nightly-i386-linux-deb9:
   <<: *nightly
@@ -869,7 +894,6 @@ release-x86_64-linux-deb10-dwarf:
   variables:
     CONFIGURE_ARGS: "--enable-dwarf-unwind"
     BUILD_FLAVOUR: dwarf
-    IGNORE_PERF_FAILURES: "all"
     TEST_ENV: "x86_64-linux-deb10-dwarf"
     BIN_DIST_PREP_TAR_COMP: "ghc-x86_64-deb10-linux-dwarf.tar.xz"
   artifacts:
@@ -960,6 +984,7 @@ release-x86_64-linux-alpine-integer-simple:
     - .release
   variables:
     BIGNUM_BACKEND: native
+    HADRIAN_ARGS: "--docs=no-sphinx"
     BUILD_FLAVOUR: "static"
 
 release-x86_64-linux-alpine-integer-gmp:
@@ -1011,6 +1036,7 @@ release-x86_64-linux-centos7:
     LLC: /bin/false
     OPT: /bin/false
     TEST_ENV: "x86_64-linux-fedora27"
+    BIN_DIST_PREP_TAR_COMP: "ghc-x86_64-fedora27-linux.tar.xz"
   cache:
     key: linux-x86_64-fedora27-$CACHE_REV
   artifacts:
@@ -1021,17 +1047,17 @@ release-x86_64-linux-centos7:
 
 validate-x86_64-linux-fedora27:
   extends: .build-x86_64-linux-fedora27
-  variables:
-    BIN_DIST_PREP_TAR_COMP: "ghc-x86_64-fedora27-linux.tar.xz"
+
+release-x86_64-linux-fedora27:
+  <<: *release
+  extends: .build-x86_64-linux-fedora27
 
 release-x86_64-linux-fedora27-dwarf:
   <<: *release
   extends: .build-x86_64-linux-fedora27
   variables:
-    HADDOCK_HYPERLINKED_SOURCES: "yes"
     CONFIGURE_ARGS: "--enable-dwarf-unwind"
     BUILD_FLAVOUR: dwarf
-    IGNORE_PERF_FAILURES: "all"
     BIN_DIST_PREP_TAR_COMP: "ghc-x86_64-fedora27-linux-dwarf.tar.xz"
     TEST_ENV: "x86_64-linux-fedora27-dwarf"
 
@@ -1146,8 +1172,6 @@ release-x86_64-windows:
   <<: *release
   extends: .build-x86_64-windows-hadrian
   variables:
-    BUILD_FLAVOUR: "perf"
-    HADDOCK_HYPERLINKED_SOURCES: "yes"
     # --skip-perf is incompatible with IGNORE_PERF_FAILURES.
     IGNORE_PERF_FAILURES: ""
 
@@ -1155,10 +1179,7 @@ release-x86_64-windows-integer-simple:
   <<: *release
   extends: .build-x86_64-windows-hadrian
   variables:
-    HADDOCK_HYPERLINKED_SOURCES: "yes"
     BIGNUM_BACKEND: native
-    IGNORE_PERF_FAILURES: "all"
-    BUILD_FLAVOUR: "perf"
     BIN_DIST_NAME: "ghc-x86_64-mingw32-unknown-nogmp"
     # --skip-perf is incompatible with IGNORE_PERF_FAILURES.
     IGNORE_PERF_FAILURES: ""

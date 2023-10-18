@@ -144,7 +144,7 @@ hash_block block =
         hash_node :: CmmNode O x -> Word32
         hash_node n | dont_care n = 0 -- don't care
         hash_node (CmmAssign r e) = hash_reg r + hash_e e
-        hash_node (CmmStore e e') = hash_e e + hash_e e'
+        hash_node (CmmStore e e' _) = hash_e e + hash_e e'
         hash_node (CmmUnsafeForeignCall t _ as) = hash_tgt t + hash_list hash_e as
         hash_node (CmmBranch _) = 23 -- NB. ignore the label
         hash_node (CmmCondBranch p _ _ _) = hash_e p
@@ -159,7 +159,7 @@ hash_block block =
 
         hash_e :: CmmExpr -> Word32
         hash_e (CmmLit l) = hash_lit l
-        hash_e (CmmLoad e _) = 67 + hash_e e
+        hash_e (CmmLoad e _ _) = 67 + hash_e e
         hash_e (CmmReg r) = hash_reg r
         hash_e (CmmMachOp _ es) = hash_list hash_e es -- pessimal - no operator check
         hash_e (CmmRegOff r i) = hash_reg r + cvt i
@@ -210,7 +210,7 @@ eqMiddleWith :: (BlockId -> BlockId -> Bool)
              -> CmmNode O O -> CmmNode O O -> Bool
 eqMiddleWith eqBid (CmmAssign r1 e1) (CmmAssign r2 e2)
   = r1 == r2 && eqExprWith eqBid e1 e2
-eqMiddleWith eqBid (CmmStore l1 r1) (CmmStore l2 r2)
+eqMiddleWith eqBid (CmmStore l1 r1 _) (CmmStore l2 r2 _)
   = eqExprWith eqBid l1 l2 && eqExprWith eqBid r1 r2
 eqMiddleWith eqBid (CmmUnsafeForeignCall t1 r1 a1)
                    (CmmUnsafeForeignCall t2 r2 a2)
@@ -222,7 +222,7 @@ eqExprWith :: (BlockId -> BlockId -> Bool)
 eqExprWith eqBid = eq
  where
   CmmLit l1          `eq` CmmLit l2          = eqLit l1 l2
-  CmmLoad e1 _       `eq` CmmLoad e2 _       = e1 `eq` e2
+  CmmLoad e1 t1 a1   `eq` CmmLoad e2 t2 a2   = t1 `cmmEqType` t2 && e1 `eq` e2 && a1 == a2
   CmmReg r1          `eq` CmmReg r2          = r1==r2
   CmmRegOff r1 i1    `eq` CmmRegOff r2 i2    = r1==r2 && i1==i2
   CmmMachOp op1 es1  `eq` CmmMachOp op2 es2  = op1==op2 && es1 `eqs` es2

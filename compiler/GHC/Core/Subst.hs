@@ -24,7 +24,7 @@ module GHC.Core.Subst (
         emptySubst, mkEmptySubst, mkSubst, mkOpenSubst, substInScope, isEmptySubst,
         extendIdSubst, extendIdSubstList, extendTCvSubst, extendTvSubstList,
         extendSubst, extendSubstList, extendSubstWithVar, zapSubstEnv,
-        addInScopeSet, extendInScope, extendInScopeList, extendInScopeIds,
+        extendInScope, extendInScopeList, extendInScopeIds,
         isInScope, setInScope, getTCvSubst, extendTvSubst, extendCvSubst,
         delBndr, delBndrs,
 
@@ -38,8 +38,6 @@ module GHC.Core.Subst (
 
 
 import GHC.Prelude
-
-import GHC.Driver.Ppr
 
 import GHC.Core
 import GHC.Core.FVs
@@ -68,6 +66,7 @@ import GHC.Utils.Misc
 import GHC.Utils.Outputable
 import GHC.Utils.Panic
 import Data.List (mapAccumL)
+import GHC.Driver.Ppr
 
 
 
@@ -255,9 +254,9 @@ lookupIdSubst (Subst in_scope ids _ _) v
   | not (isLocalId v) = Var v
   | Just e  <- lookupVarEnv ids       v = e
   | Just v' <- lookupInScope in_scope v = Var v'
-        -- Vital! See Note [Extending the Subst]
+
   | otherwise = WARN( True, text "GHC.Core.Subst.lookupIdSubst" <+> ppr v
-                            $$ ppr in_scope)
+                             $$ ppr in_scope)
                 Var v
 
 -- | Find the substitution for a 'TyVar' in the 'Subst'
@@ -292,12 +291,6 @@ mkOpenSubst in_scope pairs = Subst in_scope
 ------------------------------
 isInScope :: Var -> Subst -> Bool
 isInScope v (Subst in_scope _ _ _) = v `elemInScopeSet` in_scope
-
--- | Add the 'Var' to the in-scope set, but do not remove
--- any existing substitutions for it
-addInScopeSet :: Subst -> VarSet -> Subst
-addInScopeSet (Subst in_scope ids tvs cvs) vs
-  = Subst (in_scope `extendInScopeSetSet` vs) ids tvs cvs
 
 -- | Add the 'Var' to the in-scope set: as a side effect,
 -- and remove any existing substitutions for it

@@ -193,8 +193,9 @@ mkAssign     :: CmmReg  -> CmmExpr -> CmmAGraph
 mkAssign l (CmmReg r) | l == r  = mkNop
 mkAssign l r  = mkMiddle $ CmmAssign l r
 
+-- | Assumes natural alignment
 mkStore      :: CmmExpr -> CmmExpr -> CmmAGraph
-mkStore  l r  = mkMiddle $ CmmStore  l r
+mkStore  l r  = mkMiddle $ CmmStore  l r NaturallyAligned
 
 ---------- Control transfer
 mkJump          :: Profile -> Convention -> CmmExpr
@@ -333,14 +334,14 @@ copyIn profile conv area formals extra_stk
       | isBitsType $ localRegType reg
       , typeWidth (localRegType reg) < wordWidth platform =
         let
-          stack_slot = (CmmLoad (CmmStackSlot area off) (cmmBits $ wordWidth platform))
+          stack_slot = CmmLoad (CmmStackSlot area off) (cmmBits $ wordWidth platform) NaturallyAligned
           local = CmmLocal reg
           width = cmmRegWidth platform local
           expr  = CmmMachOp (MO_XX_Conv (wordWidth platform) width) [stack_slot]
         in CmmAssign local expr
 
       | otherwise =
-         CmmAssign (CmmLocal reg) (CmmLoad (CmmStackSlot area off) ty)
+         CmmAssign (CmmLocal reg) (CmmLoad (CmmStackSlot area off) ty NaturallyAligned)
          where ty = localRegType reg
 
     init_offset = widthInBytes (wordWidth platform) -- infotable

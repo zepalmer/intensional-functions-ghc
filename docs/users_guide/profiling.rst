@@ -386,9 +386,9 @@ compiled program.
      * ``Data.List.map``
      * ``*.map``
      * ``*.parse*``
-     * ``*.<\\*>``
+     * ``*.<\*>``
 
-    The ``*`` character can be used literally by escaping (e.g. ``\\*``).
+    The ``*`` character can be used literally by escaping (e.g. ``\*``).
 
 .. ghc-flag:: -fprof-auto
     :shortdesc: Auto-add ``SCC``\\ s to all bindings not marked INLINE
@@ -746,6 +746,10 @@ You might also want to take a look at
 `hp2any <http://www.haskell.org/haskellwiki/Hp2any>`__, a more advanced
 suite of tools (not distributed with GHC) for displaying heap profiles.
 
+Note that there might be a big difference between the OS reported memory usage
+of your program and the amount of live data as reported by heap profiling.
+The reasons for the difference are explained in :ref:`hints-os-memory`.
+
 .. _rts-options-heap-prof:
 
 RTS options for heap profiling
@@ -899,6 +903,14 @@ There are three more options which relate to heap profiling:
     Don't start heap profiling from the start of program execution. If this
     option is enabled, it's expected that the user will manually start heap
     profiling or request specific samples using functions from ``GHC.Profiling``.
+
+
+.. rts-flag:: --null-eventlog-writer
+
+    :since: 9.2.2
+
+    Don't output eventlog to file, only configure tracing events.
+    Meant to be used with customized event log writer.
 
 .. rts-flag:: -L ⟨num⟩
 

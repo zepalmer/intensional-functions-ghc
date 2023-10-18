@@ -23,7 +23,7 @@ module GHC.StgToCmm.Monad (
 
         emit, emitDecl,
         emitProcWithConvention, emitProcWithStackFrame,
-        emitOutOfLine, emitAssign, emitStore,
+        emitOutOfLine, emitAssign, emitStore, emitStore',
         emitComment, emitTick, emitUnwind,
 
         getCmm, aGraphToGraph, getPlatform, getProfile,
@@ -760,8 +760,12 @@ emitUnwind regs = do
 emitAssign :: CmmReg  -> CmmExpr -> FCode ()
 emitAssign l r = emitCgStmt (CgStmt (CmmAssign l r))
 
-emitStore :: CmmExpr  -> CmmExpr -> FCode ()
-emitStore l r = emitCgStmt (CgStmt (CmmStore l r))
+-- | Assumes natural alignment.
+emitStore :: CmmExpr -> CmmExpr -> FCode ()
+emitStore = emitStore' NaturallyAligned
+
+emitStore' :: AlignmentSpec -> CmmExpr -> CmmExpr -> FCode ()
+emitStore' alignment l r = emitCgStmt (CgStmt (CmmStore l r alignment))
 
 emit :: CmmAGraph -> FCode ()
 emit ag

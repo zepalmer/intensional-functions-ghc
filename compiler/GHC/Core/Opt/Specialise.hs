@@ -800,6 +800,7 @@ canSpecImport dflags fn
 tryWarnMissingSpecs :: DynFlags -> [Id] -> Id -> [CallInfo] -> CoreM ()
 -- See Note [Warning about missed specialisations]
 tryWarnMissingSpecs dflags callers fn calls_for_fn
+  | isClassOpId fn = return () -- See Note [Missed specialization for ClassOps]
   | wopt Opt_WarnMissedSpecs dflags
     && not (null callers)
     && allCallersInlined                  = doWarn $ Reason Opt_WarnMissedSpecs
@@ -815,7 +816,40 @@ tryWarnMissingSpecs dflags callers fn calls_for_fn
           , whenPprDebug (text "calls:" <+> vcat (map (pprCallInfo fn) calls_for_fn))
           , text "Probable fix: add INLINABLE pragma on" <+> quotes (ppr fn) ])
 
+{- Note [Missed specialisation for ClassOps]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In #19592 I saw a number of missed specialisation warnings
+which were the result of things like:
 
+    case isJumpishInstr @X86.Instr $dInstruction_s7f8 eta3_a78C of { ...
+
+where isJumpishInstr is part of the Instruction class and defined like
+this:
+
+    class Instruction instr where
+        ...
+        isJumpishInstr :: instr -> Bool
+        ...
+
+isJumpishInstr is a ClassOp which will select the right method
+from within the dictionary via our built in rules. See also
+Note [ClassOp/DFun selection] in GHC.Tc.TyCl.Instance.
+
+We don't give these unfoldings, and as a result the specialiser
+complains. But usually this doesn't matter. The simplifier will
+apply the rule and we end up with
+
+    case isJumpishInstrImplX86 eta3_a78C of { ...
+
+Since isJumpishInstrImplX86 is defined for a concrete instance (given
+by the dictionary) it is usually already well specialised!
+Theoretically the implementation of a method could still be overloaded
+over a different type class than what it's a method of. But I wasn't able
+to make this go wrong, and SPJ thinks this should be fine as well.
+
+So I decided to remove the warnings for failed specialisations on ClassOps
+alltogether as they do more harm than good.
+-}
 
 {- Note [Do not specialise imported DFuns]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1987,6 +2021,8 @@ then its body must look like
 
 Reason: when specialising the body for a call (f ty dexp), we want to
 substitute dexp for d, and pick up specialised calls in the body of f.
+
+We do allow casts, however; see Note [Account for casts in binding].
 
 This doesn't always work.  One example I came across was this:
         newtype Gen a = MkGen{ unGen :: Int -> a }

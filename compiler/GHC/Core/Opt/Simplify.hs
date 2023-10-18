@@ -362,16 +362,17 @@ simplLazyBind env top_lvl is_rec bndr bndr1 rhs rhs_se
 
         -- ANF-ise a constructor or PAP rhs
         -- We get at most one float per argument here
+        ; let body_env1 = body_env `setInScopeFromF` body_floats1
+              -- body_env1: add to in-scope set the binders from body_floats1
+              -- so that prepareBinding knows what is in scope in body1
         ; (let_floats, bndr2, body2) <- {-#SCC "prepareBinding" #-}
-                                        prepareBinding env top_lvl bndr bndr1 body1
+                                        prepareBinding body_env1 top_lvl bndr bndr1 body1
         ; let body_floats2 = body_floats1 `addLetFloats` let_floats
 
-        ; (rhs_floats, rhs')
+        ; (rhs_floats, body3)
             <-  if not (doFloatFromRhs top_lvl is_rec False body_floats2 body2)
                 then                    -- No floating, revert to body1
-                     {-#SCC "simplLazyBind-no-floating" #-}
-                     do { rhs' <- mkLam env tvs' (wrapFloats body_floats2 body1) rhs_cont
-                        ; return (emptyFloats env, rhs') }
+                     return (emptyFloats env, wrapFloats body_floats2 body1)
 
                 else if null tvs then   -- Simple floating
                      {-#SCC "simplLazyBind-simple-floating" #-}
@@ -384,11 +385,11 @@ simplLazyBind env top_lvl is_rec bndr bndr1 rhs rhs_se
                         ; (poly_binds, body3) <- abstractFloats (seUnfoldingOpts env) top_lvl
                                                                 tvs' body_floats2 body2
                         ; let floats = foldl' extendFloats (emptyFloats env) poly_binds
-                        ; rhs' <- mkLam env tvs' body3 rhs_cont
-                        ; return (floats, rhs') }
+                        ; return (floats, body3) }
 
-        ; (bind_float, env2) <- completeBind (env `setInScopeFromF` rhs_floats)
-                                             top_lvl Nothing bndr bndr2 rhs'
+        ; let env' = env `setInScopeFromF` rhs_floats
+        ; rhs' <- mkLam env' tvs' body3 rhs_cont
+        ; (bind_float, env2) <- completeBind env' top_lvl Nothing bndr bndr2 rhs'
         ; return (rhs_floats `addFloats` bind_float, env2) }
 
 --------------------------
@@ -627,7 +628,7 @@ prepareRhs :: SimplMode -> TopLevelFlag
 -- Transforms a RHS into a better RHS by ANF'ing args
 -- for expandable RHSs: constructors and PAPs
 -- e.g        x = Just e
--- becomes    a = e
+-- becomes    a = e               -- 'a' is fresh
 --            x = Just a
 -- See Note [prepareRhs]
 prepareRhs mode top_lvl occ rhs0
@@ -720,6 +721,10 @@ makeTrivialBinding mode top_lvl occ_fs info expr expr_ty
         -- Now something very like completeBind,
         -- but without the postInlineUnconditionally part
         ; (arity_type, expr2) <- tryEtaExpandRhs mode var expr1
+          -- Technically we should extend the in-scope set in 'env' with
+          -- the 'floats' from prepareRHS; but they are all fresh, so there is
+          -- no danger of introducing name shadowig in eta expansion
+
         ; unf <- mkLetUnfolding (sm_uf_opts mode) top_lvl InlineRhs var expr2
 
         ; let final_id = addLetBndrInfo var arity_type unf
@@ -1000,7 +1005,7 @@ simplExprC env expr cont
         ; -- pprTrace "simplExprC ret" (ppr expr $$ ppr expr') $
           -- pprTrace "simplExprC ret3" (ppr (seInScope env')) $
           -- pprTrace "simplExprC ret4" (ppr (seLetFloats env')) $
-          return (wrapFloats floats expr') }
+          return $! wrapFloats floats expr' }
 
 --------------------------------------------------
 simplExprF :: SimplEnv
@@ -1496,8 +1501,11 @@ simplArg env dup_flag arg_env arg
   | isSimplified dup_flag
   = return (dup_flag, arg_env, arg)
   | otherwise
-  = do { arg' <- simplExpr (arg_env `setInScopeFromE` env) arg
-       ; return (Simplified, zapSubstEnv arg_env, arg') }
+  = do { let arg_env' = arg_env `setInScopeFromE` env
+       ; arg' <- simplExpr arg_env'  arg
+       ; return (Simplified, zapSubstEnv arg_env', arg') }
+         -- Return a StaticEnv that includes the in-scope set from 'env',
+         -- because arg' may well mention those variables (#20639)
 
 {-
 ************************************************************************
@@ -2236,7 +2244,8 @@ tryRules env rules fn args call_cont
        ; return Nothing }
 
   where
-    ropts      = initRuleOpts dflags
+    -- Force this to avoid retaining DynFlags and hence SimplEnv
+    !ropts     = initRuleOpts dflags
     dflags     = seDynFlags env
     logger     = seLogger env
     zapped_env = zapSubstEnv env  -- See Note [zapSubstEnv]
@@ -2975,7 +2984,7 @@ simplAlt :: SimplEnv
          -> InAlt
          -> SimplM OutAlt
 
-simplAlt env _ imposs_deflt_cons case_bndr' cont' (Alt DEFAULT bndrs rhs)
+simplAlt env _ !imposs_deflt_cons case_bndr' cont' (Alt DEFAULT bndrs rhs)
   = ASSERT( null bndrs )
     do  { let env' = addBinderUnfolding env case_bndr'
                                         (mkOtherCon imposs_deflt_cons)
@@ -3000,7 +3009,9 @@ simplAlt env scrut' _ case_bndr' cont' (Alt (DataAlt con) vs rhs)
               con_app   = mkConApp2 con inst_tys' vs'
 
         ; env'' <- addAltUnfoldings env' scrut' case_bndr' con_app
-        ; rhs' <- simplExprC env'' rhs cont'
+        -- Forced so that simplExprC forces wrapFloats which means we don't
+        -- retain the InScopeSet in SimplFloats
+        ; !rhs' <- simplExprC env'' rhs cont'
         ; return (Alt (DataAlt con) vs' rhs') }
 
 {- Note [Adding evaluatedness info to pattern-bound variables]
@@ -3088,7 +3099,9 @@ addAltUnfoldings env scrut case_bndr con_app
        ; traceSmpl "addAltUnf" (vcat [ppr case_bndr <+> ppr scrut, ppr con_app])
        ; return env2 }
   where
-    mk_simple_unf = mkSimpleUnfolding (seUnfoldingOpts env)
+    -- Force the opts, so that the whole SimplEnv isn't retained
+    !opts = seUnfoldingOpts env
+    mk_simple_unf = mkSimpleUnfolding opts
 
 addBinderUnfolding :: SimplEnv -> Id -> Unfolding -> SimplEnv
 addBinderUnfolding env bndr unf
@@ -3926,14 +3939,15 @@ simplLetUnfolding env top_lvl cont_mb id new_rhs rhs_ty arity unf
   | isExitJoinId id
   = return noUnfolding -- See Note [Do not inline exit join points] in GHC.Core.Opt.Exitify
   | otherwise
-  = mkLetUnfolding (seUnfoldingOpts env) top_lvl InlineRhs id new_rhs
+  = -- Otherwise, we end up retaining all the SimpleEnv
+    let !opts = seUnfoldingOpts env
+    in mkLetUnfolding opts top_lvl InlineRhs id new_rhs
 
 -------------------
 mkLetUnfolding :: UnfoldingOpts -> TopLevelFlag -> UnfoldingSource
                -> InId -> OutExpr -> SimplM Unfolding
-mkLetUnfolding uf_opts top_lvl src id new_rhs
-  = is_bottoming `seq`  -- See Note [Force bottoming field]
-    return (mkUnfolding uf_opts src is_top_lvl is_bottoming new_rhs)
+mkLetUnfolding !uf_opts top_lvl src id new_rhs
+  = return (mkUnfolding uf_opts src is_top_lvl is_bottoming new_rhs)
             -- We make an  unfolding *even for loop-breakers*.
             -- Reason: (a) It might be useful to know that they are WHNF
             --         (b) In GHC.Iface.Tidy we currently assume that, if we want to
@@ -3941,8 +3955,11 @@ mkLetUnfolding uf_opts top_lvl src id new_rhs
             --             to expose.  (We could instead use the RHS, but currently
             --             we don't.)  The simple thing is always to have one.
   where
-    is_top_lvl   = isTopLevel top_lvl
-    is_bottoming = isDeadEndId id
+    -- Might as well force this, profiles indicate up to 0.5MB of thunks
+    -- just from this site.
+    !is_top_lvl   = isTopLevel top_lvl
+    -- See Note [Force bottoming field]
+    !is_bottoming = isDeadEndId id
 
 -------------------
 simplStableUnfolding :: SimplEnv -> TopLevelFlag
@@ -3979,11 +3996,17 @@ simplStableUnfolding env top_lvl mb_cont id rhs_ty id_arity unf
                           , ug_boring_ok = boring_ok
                           }
                           -- Happens for INLINE things
-                     -> let guide' =
+                        -- Really important to force new_boring_ok as otherwise
+                        -- `ug_boring_ok` is a thunk chain of
+                        -- inlineBoringExprOk expr0
+                        --  || inlineBoringExprOk expr1 || ...
+                        --  See #20134
+                     -> let !new_boring_ok = boring_ok || inlineBoringOk expr'
+                            guide' =
                               UnfWhen { ug_arity = arity
                                       , ug_unsat_ok = sat_ok
-                                      , ug_boring_ok =
-                                          boring_ok || inlineBoringOk expr'
+                                      , ug_boring_ok = new_boring_ok
+
                                       }
                         -- Refresh the boring-ok flag, in case expr'
                         -- has got small. This happens, notably in the inlinings
@@ -4004,7 +4027,9 @@ simplStableUnfolding env top_lvl mb_cont id rhs_ty id_arity unf
         | otherwise -> return noUnfolding   -- Discard unstable unfoldings
   where
     uf_opts    = seUnfoldingOpts env
-    is_top_lvl = isTopLevel top_lvl
+    -- Forcing this can save about 0.5MB of max residency and the result
+    -- is small and easy to compute so might as well force it.
+    !is_top_lvl = isTopLevel top_lvl
     act        = idInlineActivation id
     unf_env    = updMode (updModeForStableUnfoldings act) env
          -- See Note [Simplifying inside stable unfoldings] in GHC.Core.Opt.Simplify.Utils
@@ -4037,9 +4062,14 @@ Generally, if we know that 'f' has arity N, it seems sensible to
 eta-expand the stable unfolding to arity N too. Simple and consistent.
 
 Wrinkles
+
+* See Note [Eta-expansion in stable unfoldings] in
+  GHC.Core.Opt.Simplify.Utils
+
 * Don't eta-expand a trivial expr, else each pass will eta-reduce it,
   and then eta-expand again. See Note [Do not eta-expand trivial expressions]
   in GHC.Core.Opt.Simplify.Utils.
+
 * Don't eta-expand join points; see Note [Do not eta-expand join points]
   in GHC.Core.Opt.Simplify.Utils.  We uphold this because the join-point
   case (mb_cont = Just _) doesn't use eta_expand.
@@ -4146,3 +4176,4 @@ for the RHS as well as the LHS, but that seems more conservative
 than necesary.  Allowing some inlining might, for example, eliminate
 a binding.
 -}
+

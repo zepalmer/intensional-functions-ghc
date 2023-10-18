@@ -461,8 +461,8 @@ wordAligned opts e
 
 -- | Takes a closure pointer and returns the info table pointer
 closureInfoPtr :: PtrOpts -> CmmExpr -> CmmExpr
-closureInfoPtr opts e =
-    CmmLoad (wordAligned opts e) (bWord (profilePlatform (po_profile opts)))
+closureInfoPtr opts@(PtrOpts profile _) e =
+    cmmLoadBWord  (profilePlatform profile) (wordAligned opts e)
 
 -- | Takes an info pointer (the first word of a closure) and returns its entry
 -- code
@@ -470,7 +470,7 @@ entryCode :: Platform -> CmmExpr -> CmmExpr
 entryCode platform e =
  if platformTablesNextToCode platform
       then e
-      else CmmLoad e (bWord platform)
+      else cmmLoadBWord platform e
 
 -- | Takes a closure pointer, and return the *zero-indexed*
 -- constructor tag obtained from the info table
@@ -512,24 +512,24 @@ infoTableConstrTag = infoTableSrtBitmap
 -- field of the info table
 infoTableSrtBitmap :: Profile -> CmmExpr -> CmmExpr
 infoTableSrtBitmap profile info_tbl
-  = CmmLoad (cmmOffsetB platform info_tbl (stdSrtBitmapOffset profile)) (bHalfWord platform)
+  = CmmLoad (cmmOffsetB platform info_tbl (stdSrtBitmapOffset profile)) (bHalfWord platform) NaturallyAligned
     where platform = profilePlatform profile
 
 -- | Takes an info table pointer (from infoTable) and returns the closure type
 -- field of the info table.
 infoTableClosureType :: Profile -> CmmExpr -> CmmExpr
 infoTableClosureType profile info_tbl
-  = CmmLoad (cmmOffsetB platform info_tbl (stdClosureTypeOffset profile)) (bHalfWord platform)
+  = CmmLoad (cmmOffsetB platform info_tbl (stdClosureTypeOffset profile)) (bHalfWord platform) NaturallyAligned
     where platform = profilePlatform profile
 
 infoTablePtrs :: Profile -> CmmExpr -> CmmExpr
 infoTablePtrs profile info_tbl
-  = CmmLoad (cmmOffsetB platform info_tbl (stdPtrsOffset profile)) (bHalfWord platform)
+  = CmmLoad (cmmOffsetB platform info_tbl (stdPtrsOffset profile)) (bHalfWord platform) NaturallyAligned
     where platform = profilePlatform profile
 
 infoTableNonPtrs :: Profile -> CmmExpr -> CmmExpr
 infoTableNonPtrs profile info_tbl
-  = CmmLoad (cmmOffsetB platform info_tbl (stdNonPtrsOffset profile)) (bHalfWord platform)
+  = CmmLoad (cmmOffsetB platform info_tbl (stdNonPtrsOffset profile)) (bHalfWord platform) NaturallyAligned
     where platform = profilePlatform profile
 
 -- | Takes the info pointer of a function, and returns a pointer to the first

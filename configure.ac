@@ -13,7 +13,7 @@ dnl
 # see what flags are available. (Better yet, read the documentation!)
 #
 
-AC_INIT([The Glorious Glasgow Haskell Compilation System], [9.2.1], [glasgow-haskell-bugs@haskell.org], [ghc-AC_PACKAGE_VERSION])
+AC_INIT([The Glorious Glasgow Haskell Compilation System], [9.2.2], [glasgow-haskell-bugs@haskell.org], [ghc-AC_PACKAGE_VERSION])
     # Version on HEAD must be X.Y (not X.Y.Z) for ProjectVersionMunged variable
     # to be useful (cf #19058)
 
@@ -763,13 +763,10 @@ dnl ** See whether cc supports -no-pie
 FP_GCC_SUPPORTS_NO_PIE
 
 dnl ** Used to determine how to compile ghc-prim's atomics.c, used by
-dnl    unregisterised, Sparc, and PPC backends.
-FP_GCC_SUPPORTS__ATOMICS
-if test $CONF_GCC_SUPPORTS__ATOMICS = YES ; then
-  AC_DEFINE([HAVE_C11_ATOMICS], [1], [Does GCC support __atomic primitives?])
-else
-  AC_MSG_ERROR([C compiler needs to support __atomic primitives.])
-fi
+dnl    unregisterised, Sparc, and PPC backends. Also determines whether
+dnl    linking to libatomic is required for atomic operations, e.g. on
+dnl    RISCV64 GCC.
+FP_CC_SUPPORTS__ATOMICS
 
 FP_GCC_EXTRA_FLAGS
 
@@ -949,6 +946,9 @@ AC_CHECK_HEADERS([sys/cpuset.h], [], [],
 # include <sys/param.h>
 #endif
 ]])
+
+dnl ** check whether a declaration for `environ` is provided by libc.
+FP_CHECK_ENVIRON
 
 dnl ** check if it is safe to include both <time.h> and <sys/time.h>
 AC_HEADER_TIME

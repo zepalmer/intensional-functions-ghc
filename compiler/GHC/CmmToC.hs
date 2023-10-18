@@ -218,14 +218,14 @@ pprStmt platform stmt =
 
     CmmAssign dest src -> pprAssign platform dest src
 
-    CmmStore  dest src
+    CmmStore  dest src align
         | typeWidth rep == W64 && wordWidth platform /= W64
         -> (if isFloatType rep then text "ASSIGN_DBL"
                                else ptext (sLit ("ASSIGN_Word64"))) <>
            parens (mkP_ <> pprExpr1 platform dest <> comma <> pprExpr platform src) <> semi
 
         | otherwise
-        -> hsep [ pprExpr platform (CmmLoad dest rep), equals, pprExpr platform src <> semi ]
+        -> hsep [ pprExpr platform (CmmLoad dest rep align), equals, pprExpr platform src <> semi ]
         where
           rep = cmmExprType platform src
 
@@ -372,10 +372,10 @@ pprSwitch platform e ids
 
 pprExpr :: Platform -> CmmExpr -> SDoc
 pprExpr platform e = case e of
-    CmmLit lit      -> pprLit platform lit
-    CmmLoad e ty    -> pprLoad platform e ty
-    CmmReg reg      -> pprCastReg reg
-    CmmRegOff reg 0 -> pprCastReg reg
+    CmmLit lit         -> pprLit platform lit
+    CmmLoad e ty align -> pprLoad platform e ty align
+    CmmReg reg         -> pprCastReg reg
+    CmmRegOff reg 0    -> pprCastReg reg
 
     -- CmmRegOff is an alias of MO_Add
     CmmRegOff reg i -> pprCastReg reg <> char '+' <>
@@ -386,13 +386,14 @@ pprExpr platform e = case e of
     CmmStackSlot _ _   -> panic "pprExpr: CmmStackSlot not supported!"
 
 
-pprLoad :: Platform -> CmmExpr -> CmmType -> SDoc
-pprLoad platform e ty
+pprLoad :: Platform -> CmmExpr -> CmmType -> AlignmentSpec -> SDoc
+pprLoad platform e ty _align
   | width == W64, wordWidth platform /= W64
   = (if isFloatType ty then text "PK_DBL"
                        else text "PK_Word64")
     <> parens (mkP_ <> pprExpr1 platform e)
 
+  -- TODO: exploit natural-alignment where possible
   | otherwise
   = case e of
         CmmReg r | isPtrReg r && width == wordWidth platform && not (isFloatType ty)
@@ -430,18 +431,97 @@ pprMachOpApp platform op args
         isMulMayOfloOp _ = False
 
 pprMachOpApp platform mop args
-  | Just ty <- machOpNeedsCast mop
+  | Just ty <- machOpNeedsCast platform mop (map (cmmExprType platform) args)
   = ty <> parens (pprMachOpApp' platform mop args)
   | otherwise
   = pprMachOpApp' platform mop args
 
--- Comparisons in C have type 'int', but we want type W_ (this is what
--- resultRepOfMachOp says).  The other C operations inherit their type
--- from their operands, so no casting is required.
-machOpNeedsCast :: MachOp -> Maybe SDoc
-machOpNeedsCast mop
+{-
+Note [Zero-extending sub-word signed results]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Consider a program like (from #20634):
+
+    test() {
+        bits64 ret;
+        bits8 a,b;
+        a = 0xe1 :: bits8;       // == -31 signed
+        b = %quot(a, 3::bits8);  // == -10 signed
+        ret = %zx64(a);          // == 0xf6 unsigned
+        return (ret);
+    }
+
+This program should return 0xf6 == 246. However, we need to be very careful
+with when dealing with the result of the %quot. For instance, one might be
+tempted produce code like:
+
+    StgWord8 a = 0xe1U;
+    StgInt8  b = (StgInt8) a / (StgInt8) 0x3U;
+    StgWord ret = (W_) b;
+
+However, this would be wrong; by widening `b` directly from `StgInt8` to
+`StgWord` we will get sign-extension semantics: rather than 0xf6 we will get
+0xfffffffffffffff6. To avoid this we must first cast `b` back to `StgWord8`,
+ensuring that we get zero-extension semantics when we widen up to `StgWord`.
+
+Note [When in doubt, cast arguments as unsigned]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In general C's signed-ness behavior can lead to surprising results and
+consequently we are very explicit about ensuring that arguments have the
+correct signedness. For instance, consider a program like
+
+    test() {
+        bits64 ret, a, b;
+        a = %neg(43 :: bits64);
+        b = %neg(0x443c70fa3e465120 :: bits64);
+        ret = %modu(a, b);
+        return (ret);
+    }
+
+In this case both `a` and `b` will be StgInts in the generated C (since
+`MO_Neg` is a signed operation). However, we want to ensure that we perform an
+*unsigned* modulus operation, therefore we must be careful to cast both arguments
+to StgWord. We do this for any operation where the signedness of the argument
+may affect the operation's semantics.
+-}
+
+-- | The result type of most operations is determined by the operands. However,
+-- there are a few exceptions: particularly operations which might get promoted
+-- to a signed result. For these we explicitly cast the result.
+machOpNeedsCast :: Platform -> MachOp -> [CmmType] -> Maybe SDoc
+machOpNeedsCast platform mop args
+    -- Comparisons in C have type 'int', but we want type W_ (this is what
+    -- resultRepOfMachOp says).
   | isComparisonMachOp mop = Just mkW_
+
+    -- See Note [Zero-extended sub-word signed results]
+  | signedOp mop
+  , res_ty <- machOpResultType platform mop args
+  , not $ isFloatType res_ty -- only integer operations, not MO_SF_Conv
+  , let w = typeWidth res_ty
+  , w < wordWidth platform
+  = cast_it w
+
+    -- A shift operation like (a >> b) where a::Word8 and b::Word has type Word
+    -- in C yet we want a Word8
+  | Just w <- shiftOp mop  = cast_it w
+
+    -- The results of these operations may be promoted to signed values
+    -- due to C11 section 6.3.1.1.
+  | MO_Add w <- mop        = cast_it w
+  | MO_Sub w <- mop        = cast_it w
+  | MO_Mul w <- mop        = cast_it w
+  | MO_U_Quot w <- mop     = cast_it w
+  | MO_U_Rem  w <- mop     = cast_it w
+  | MO_And w <- mop        = cast_it w
+  | MO_Or  w <- mop        = cast_it w
+  | MO_Xor w <- mop        = cast_it w
+  | MO_Not w <- mop        = cast_it w
+
   | otherwise              = Nothing
+  where
+    cast_it w =
+      let ty = machRep_U_CType platform w
+      in Just $ parens ty
 
 pprMachOpApp' :: Platform -> MachOp -> [CmmExpr] -> SDoc
 pprMachOpApp' platform mop args
@@ -455,15 +535,31 @@ pprMachOpApp' platform mop args
     _     -> panic "PprC.pprMachOp : machop with wrong number of args"
 
   where
+    pprArg e
+      | needsFCasts mop = cCast platform (machRep_F_CType width) e
         -- Cast needed for signed integer ops
-    pprArg e | signedOp    mop = cCast platform (machRep_S_CType platform (typeWidth (cmmExprType platform e))) e
-             | needsFCasts mop = cCast platform (machRep_F_CType (typeWidth (cmmExprType platform e))) e
-             | otherwise       = pprExpr1 platform e
-    needsFCasts (MO_F_Eq _)   = False
-    needsFCasts (MO_F_Ne _)   = False
+      | signedOp    mop = cCast platform (machRep_S_CType platform width) e
+        -- See Note [When in doubt, cast arguments as unsigned]
+      | needsUnsignedCast mop
+                        = cCast platform (machRep_U_CType platform width) e
+      | otherwise       = pprExpr1 platform e
+      where
+        width = typeWidth (cmmExprType platform e)
+
     needsFCasts (MO_F_Neg _)  = True
     needsFCasts (MO_F_Quot _) = True
     needsFCasts mop  = floatComparison mop
+
+    -- See Note [When in doubt, cast arguments as unsigned]
+    needsUnsignedCast (MO_Mul    _) = True
+    needsUnsignedCast (MO_U_Shr  _) = True
+    needsUnsignedCast (MO_U_Quot _) = True
+    needsUnsignedCast (MO_U_Rem  _) = True
+    needsUnsignedCast (MO_U_Ge   _) = True
+    needsUnsignedCast (MO_U_Le   _) = True
+    needsUnsignedCast (MO_U_Gt   _) = True
+    needsUnsignedCast (MO_U_Lt   _) = True
+    needsUnsignedCast _             = False
 
 -- --------------------------------------------------------------------------
 -- Literals
@@ -767,6 +863,12 @@ signedOp (MO_S_Shr  _)    = True
 signedOp (MO_SS_Conv _ _) = True
 signedOp (MO_SF_Conv _ _) = True
 signedOp _                = False
+
+shiftOp :: MachOp -> Maybe Width
+shiftOp (MO_Shl w)        = Just w
+shiftOp (MO_U_Shr w)      = Just w
+shiftOp (MO_S_Shr w)      = Just w
+shiftOp _                 = Nothing
 
 floatComparison :: MachOp -> Bool  -- comparison between float args
 floatComparison (MO_F_Eq   _) = True
@@ -1157,7 +1259,7 @@ te_Lit _ = return ()
 
 te_Stmt :: CmmNode e x -> TE ()
 te_Stmt (CmmAssign r e)         = te_Reg r >> te_Expr e
-te_Stmt (CmmStore l r)          = te_Expr l >> te_Expr r
+te_Stmt (CmmStore l r _)        = te_Expr l >> te_Expr r
 te_Stmt (CmmUnsafeForeignCall target rs es)
   = do  te_Target target
         mapM_ te_temp rs
@@ -1173,7 +1275,7 @@ te_Target (PrimTarget{})           = return ()
 
 te_Expr :: CmmExpr -> TE ()
 te_Expr (CmmLit lit)            = te_Lit lit
-te_Expr (CmmLoad e _)           = te_Expr e
+te_Expr (CmmLoad e _ _)         = te_Expr e
 te_Expr (CmmReg r)              = te_Reg r
 te_Expr (CmmMachOp _ es)        = mapM_ te_Expr es
 te_Expr (CmmRegOff r _)         = te_Reg r

@@ -128,6 +128,7 @@ data GeneralFlag
    | Opt_DoCmmLinting
    | Opt_DoAsmLinting
    | Opt_DoAnnotationLinting
+   | Opt_DoBoundsChecking
    | Opt_NoLlvmMangler                  -- hidden flag
    | Opt_FastLlvm                       -- hidden flag
    | Opt_NoTypeableBinds
@@ -266,6 +267,7 @@ data GeneralFlag
    | Opt_Ticky_Dyn_Thunk
    | Opt_RPath
    | Opt_RelativeDynlibPaths
+   | Opt_CompactUnwind               -- ^ @-fcompact-unwind@
    | Opt_Hpc
    | Opt_FamAppCache
    | Opt_ExternalInterpreter
@@ -512,6 +514,7 @@ data WarningFlag =
    | Opt_WarnAmbiguousFields                -- Since 9.2
    | Opt_WarnImplicitLift                 -- Since 9.2
    | Opt_WarnMissingKindSignatures        -- Since 9.2
+   | Opt_WarnUnicodeBidirectionalFormatCharacters -- Since 9.0.2
    deriving (Eq, Ord, Show, Enum)
 
 -- | Used when outputting warnings: if a reason is given, it is

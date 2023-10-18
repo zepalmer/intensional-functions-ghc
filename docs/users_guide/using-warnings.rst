@@ -14,6 +14,13 @@ of warnings.
 To turn off an individual warning ``-W<wflag>``, use ``-Wno-<wflag>``.
 To reverse ``-Werror``, which makes all warnings into errors, use ``-Wwarn``.
 
+.. note::
+   In GHC < 8 the syntax for ``-W<wflag>`` was ``-fwarn-<wflag>``
+   (e.g. ``-fwarn-incomplete-patterns``).
+   This spelling is deprecated, but still accepted for backwards compatibility.
+   Likewise, ``-Wno-<wflag>`` used to be ``fno-warn-<wflag>``
+   (e.g. ``-fno-warn-incomplete-patterns``).
+
 
 .. ghc-flag:: -Wdefault
     :shortdesc: enable default flags
@@ -55,6 +62,7 @@ To reverse ``-Werror``, which makes all warnings into errors, use ``-Wwarn``.
         * :ghc-flag:`-Wstar-binder`
         * :ghc-flag:`-Woperator-whitespace-ext-conflict`
         * :ghc-flag:`-Wambiguous-fields`
+        * :ghc-flag:`-Wunicode-bidirectional-format-characters`
 
 The following flags are simple ways to select standard "packages" of warnings:
 
@@ -2129,6 +2137,23 @@ of ``-W(no-)*``.
 
     This warning has no effect when :extension:`DuplicateRecordFields` is
     disabled.
+
+.. ghc-flag:: -Wunicode-bidirectional-format-characters
+    :shortdesc: warn about the usage of unicode bidirectional layout override characters
+    :type: dynamic
+    :category:
+
+    Explicit unicode bidirectional formatting characters can cause source code
+    to be rendered misleadingly in many viewers. We warn if any such character
+    is present in the source.
+
+    Specifically, the characters disallowed by this warning
+    are those which are a part of the 'Explicit Formatting`
+    category of the `Unicode Bidirectional Character Type Listing
+    <https://www.unicode.org/reports/tr9/#Bidirectional_Character_Types>`_
+
+    :since: 9.0.2
+
 
 If you're feeling really paranoid, the :ghc-flag:`-dcore-lint` option is a good choice.
 It turns on heavyweight intra-pass sanity-checking within GHC. (It checks GHC's

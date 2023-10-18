@@ -97,6 +97,10 @@ void initTracing (void)
     initEventLogging();
 
     if (RtsFlags.TraceFlags.tracing == TRACE_EVENTLOG
+            && RtsFlags.TraceFlags.nullWriter) {
+        startEventLogging(&NullEventLogWriter);
+    }
+    else if (RtsFlags.TraceFlags.tracing == TRACE_EVENTLOG
             && rtsConfig.eventlog_writer != NULL) {
         startEventLogging(rtsConfig.eventlog_writer);
     }
@@ -169,7 +173,6 @@ static char *thread_stop_reasons[] = {
     [6 + BlockedOnSTM]          = "blocked on STM",
     [6 + BlockedOnDoProc]       = "blocked on asyncDoProc",
     [6 + BlockedOnCCall]        = "blocked on a foreign call",
-    [6 + BlockedOnIOCompletion] = "blocked on I/O Completion port",
     [6 + BlockedOnCCall_Interruptible] = "blocked on a foreign call (interruptible)",
     [6 + BlockedOnMsgThrowTo]   =  "blocked on throwTo",
     [6 + ThreadMigrating]       =  "migrating"
