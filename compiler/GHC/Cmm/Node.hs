@@ -74,7 +74,7 @@ data CmmNode e x where
   CmmAssign :: !CmmReg -> !CmmExpr -> CmmNode O O
     -- Assign to register
 
-  CmmStore :: !CmmExpr -> !CmmExpr -> CmmNode O O
+  CmmStore :: !CmmExpr -> !CmmExpr -> !AlignmentSpec -> CmmNode O O
     -- Assign to memory location.  Size is
     -- given by cmmExprType of the rhs.
 
@@ -321,7 +321,7 @@ instance UserOfRegs LocalReg (CmmNode e x) where
   {-# INLINEABLE foldRegsUsed #-}
   foldRegsUsed platform f !z n = case n of
     CmmAssign _ expr -> fold f z expr
-    CmmStore addr rval -> fold f (fold f z addr) rval
+    CmmStore addr rval _ -> fold f (fold f z addr) rval
     CmmUnsafeForeignCall t _ args -> fold f (fold f z t) args
     CmmCondBranch expr _ _ _ -> fold f z expr
     CmmSwitch expr _ -> fold f z expr
@@ -336,7 +336,7 @@ instance UserOfRegs GlobalReg (CmmNode e x) where
   {-# INLINEABLE foldRegsUsed #-}
   foldRegsUsed platform f !z n = case n of
     CmmAssign _ expr -> fold f z expr
-    CmmStore addr rval -> fold f (fold f z addr) rval
+    CmmStore addr rval _ -> fold f (fold f z addr) rval
     CmmUnsafeForeignCall t _ args -> fold f (fold f z t) args
     CmmCondBranch expr _ _ _ -> fold f z expr
     CmmSwitch expr _ -> fold f z expr
@@ -464,9 +464,9 @@ wrapRecExp :: (CmmExpr -> CmmExpr) -> CmmExpr -> CmmExpr
 -- Take a transformer on expressions and apply it recursively.
 -- (wrapRecExp f e) first recursively applies itself to sub-expressions of e
 --                  then  uses f to rewrite the resulting expression
-wrapRecExp f (CmmMachOp op es)    = f (CmmMachOp op $ map (wrapRecExp f) es)
-wrapRecExp f (CmmLoad addr ty)    = f (CmmLoad (wrapRecExp f addr) ty)
-wrapRecExp f e                    = f e
+wrapRecExp f (CmmMachOp op es)       = f (CmmMachOp op $ map (wrapRecExp f) es)
+wrapRecExp f (CmmLoad addr ty align) = f (CmmLoad (wrapRecExp f addr) ty align)
+wrapRecExp f e                       = f e
 
 mapExp :: (CmmExpr -> CmmExpr) -> CmmNode e x -> CmmNode e x
 mapExp _ f@(CmmEntry{})                          = f
@@ -474,7 +474,7 @@ mapExp _ m@(CmmComment _)                        = m
 mapExp _ m@(CmmTick _)                           = m
 mapExp f   (CmmUnwind regs)                      = CmmUnwind (map (fmap (fmap f)) regs)
 mapExp f   (CmmAssign r e)                       = CmmAssign r (f e)
-mapExp f   (CmmStore addr e)                     = CmmStore (f addr) (f e)
+mapExp f   (CmmStore addr e align)               = CmmStore (f addr) (f e) align
 mapExp f   (CmmUnsafeForeignCall tgt fs as)      = CmmUnsafeForeignCall (mapForeignTarget f tgt) fs (map f as)
 mapExp _ l@(CmmBranch _)                         = l
 mapExp f   (CmmCondBranch e ti fi l)             = CmmCondBranch (f e) ti fi l
@@ -495,9 +495,9 @@ mapForeignTargetM _ (PrimTarget _)      = Nothing
 wrapRecExpM :: (CmmExpr -> Maybe CmmExpr) -> (CmmExpr -> Maybe CmmExpr)
 -- (wrapRecExpM f e) first recursively applies itself to sub-expressions of e
 --                   then  gives f a chance to rewrite the resulting expression
-wrapRecExpM f n@(CmmMachOp op es)  = maybe (f n) (f . CmmMachOp op)    (mapListM (wrapRecExpM f) es)
-wrapRecExpM f n@(CmmLoad addr ty)  = maybe (f n) (f . flip CmmLoad ty) (wrapRecExpM f addr)
-wrapRecExpM f e                    = f e
+wrapRecExpM f n@(CmmMachOp op es)       = maybe (f n) (f . CmmMachOp op)    (mapListM (wrapRecExpM f) es)
+wrapRecExpM f n@(CmmLoad addr ty align) = maybe (f n) (\addr' -> f $ CmmLoad addr' ty align) (wrapRecExpM f addr)
+wrapRecExpM f e                         = f e
 
 mapExpM :: (CmmExpr -> Maybe CmmExpr) -> CmmNode e x -> Maybe (CmmNode e x)
 mapExpM _ (CmmEntry{})              = Nothing
@@ -505,7 +505,7 @@ mapExpM _ (CmmComment _)            = Nothing
 mapExpM _ (CmmTick _)               = Nothing
 mapExpM f (CmmUnwind regs)          = CmmUnwind `fmap` mapM (\(r,e) -> mapM f e >>= \e' -> pure (r,e')) regs
 mapExpM f (CmmAssign r e)           = CmmAssign r `fmap` f e
-mapExpM f (CmmStore addr e)         = (\[addr', e'] -> CmmStore addr' e') `fmap` mapListM f [addr, e]
+mapExpM f (CmmStore addr e align)   = (\[addr', e'] -> CmmStore addr' e' align) `fmap` mapListM f [addr, e]
 mapExpM _ (CmmBranch _)             = Nothing
 mapExpM f (CmmCondBranch e ti fi l) = (\x -> CmmCondBranch x ti fi l) `fmap` f e
 mapExpM f (CmmSwitch e tbl)         = (\x -> CmmSwitch x tbl)       `fmap` f e
@@ -548,9 +548,9 @@ foldExpForeignTarget _   (PrimTarget _)      z = z
 -- Specifically (wrapRecExpf f e z) deals with CmmMachOp and CmmLoad
 -- itself, delegating all the other CmmExpr forms to 'f'.
 wrapRecExpf :: (CmmExpr -> z -> z) -> CmmExpr -> z -> z
-wrapRecExpf f e@(CmmMachOp _ es) z = foldr (wrapRecExpf f) (f e z) es
-wrapRecExpf f e@(CmmLoad addr _) z = wrapRecExpf f addr (f e z)
-wrapRecExpf f e                  z = f e z
+wrapRecExpf f e@(CmmMachOp _ es)   z = foldr (wrapRecExpf f) (f e z) es
+wrapRecExpf f e@(CmmLoad addr _ _) z = wrapRecExpf f addr (f e z)
+wrapRecExpf f e                    z = f e z
 
 foldExp :: (CmmExpr -> z -> z) -> CmmNode e x -> z -> z
 foldExp _ (CmmEntry {}) z                         = z
@@ -558,7 +558,7 @@ foldExp _ (CmmComment {}) z                       = z
 foldExp _ (CmmTick {}) z                          = z
 foldExp f (CmmUnwind xs) z                        = foldr (maybe id f) z (map snd xs)
 foldExp f (CmmAssign _ e) z                       = f e z
-foldExp f (CmmStore addr e) z                     = f addr $ f e z
+foldExp f (CmmStore addr e _) z                   = f addr $ f e z
 foldExp f (CmmUnsafeForeignCall t _ as) z         = foldr f (foldExpForeignTarget f t z) as
 foldExp _ (CmmBranch _) z                         = z
 foldExp f (CmmCondBranch e _ _ _) z               = f e z

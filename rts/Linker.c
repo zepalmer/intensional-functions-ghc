@@ -78,6 +78,33 @@
 #if defined(dragonfly_HOST_OS)
 #include <sys/tls.h>
 #endif
+
+/*
+ * Note [iconv and FreeBSD]
+ * ~~~~~~~~~~~~~~~~~~~~~~~~
+ *
+ * On FreeBSD libc.so provides an implementation of the iconv_* family of
+ * functions. However, due to their implementation, these symbols cannot be
+ * resolved via dlsym(); rather, they can only be resolved using the
+ * explicitly-versioned dlvsym().
+ *
+ * This is problematic for the RTS linker since we may be asked to load
+ * an object that depends upon iconv. To handle this we include a set of
+ * fallback cases for these functions, allowing us to resolve them to the
+ * symbols provided by the libc against which the RTS is linked.
+ *
+ * See #20354.
+ */
+
+#if defined(freebsd_HOST_OS)
+extern void iconvctl();
+extern void iconv_open_into();
+extern void iconv_open();
+extern void iconv_close();
+extern void iconv_canonicalize();
+extern void iconv();
+#endif
+
 /*
    Note [runtime-linker-support]
    -----------------------------
@@ -655,6 +682,10 @@ internal_dlsym(const char *symbol) {
     }
     RELEASE_LOCK(&dl_mutex);
 
+    IF_DEBUG(linker, debugBelch("internal_dlsym: looking for symbol '%s' in special cases\n", symbol));
+#   define SPECIAL_SYMBOL(sym) \
+      if (strcmp(symbol, #sym) == 0) return (void*)&sym;
+
 #   if defined(HAVE_SYS_STAT_H) && defined(linux_HOST_OS) && defined(__GLIBC__)
     // HACK: GLIBC implements these functions with a great deal of trickery where
     //       they are either inlined at compile time to their corresponding
@@ -664,17 +695,27 @@ internal_dlsym(const char *symbol) {
     //       We borrow the approach that the LLVM JIT uses to resolve these
     //       symbols. See http://llvm.org/PR274 and #7072 for more info.
 
-    IF_DEBUG(linker, debugBelch("internal_dlsym: looking for symbol '%s' in GLIBC special cases\n", symbol));
-
-    if (strcmp(symbol, "stat") == 0) return (void*)&stat;
-    if (strcmp(symbol, "fstat") == 0) return (void*)&fstat;
-    if (strcmp(symbol, "lstat") == 0) return (void*)&lstat;
-    if (strcmp(symbol, "stat64") == 0) return (void*)&stat64;
-    if (strcmp(symbol, "fstat64") == 0) return (void*)&fstat64;
-    if (strcmp(symbol, "lstat64") == 0) return (void*)&lstat64;
-    if (strcmp(symbol, "atexit") == 0) return (void*)&atexit;
-    if (strcmp(symbol, "mknod") == 0) return (void*)&mknod;
+    SPECIAL_SYMBOL(stat);
+    SPECIAL_SYMBOL(fstat);
+    SPECIAL_SYMBOL(lstat);
+    SPECIAL_SYMBOL(stat64);
+    SPECIAL_SYMBOL(fstat64);
+    SPECIAL_SYMBOL(lstat64);
+    SPECIAL_SYMBOL(atexit);
+    SPECIAL_SYMBOL(mknod);
 #   endif
+
+    // See Note [iconv and FreeBSD]
+#   if defined(freebsd_HOST_OS)
+    SPECIAL_SYMBOL(iconvctl);
+    SPECIAL_SYMBOL(iconv_open_into);
+    SPECIAL_SYMBOL(iconv_open);
+    SPECIAL_SYMBOL(iconv_close);
+    SPECIAL_SYMBOL(iconv_canonicalize);
+    SPECIAL_SYMBOL(iconv);
+#   endif
+
+#undef SPECIAL_SYMBOL
 
     // we failed to find the symbol
     return NULL;
@@ -1086,6 +1127,9 @@ void
 mmapForLinkerMarkExecutable(void *start, size_t len)
 {
   DWORD old;
+  if (len == 0) {
+    return;
+  }
   if (VirtualProtect(start, len, PAGE_EXECUTE_READ, &old) == 0) {
     sysErrorBelch("mmapForLinkerMarkExecutable: failed to protect %zd bytes at %p",
                   len, start);
@@ -1115,7 +1159,7 @@ mmapForLinker (size_t bytes, uint32_t prot, uint32_t flags, int fd, int offset)
 mmap_again:
 #endif
 
-   if (mmap_32bit_base != 0) {
+   if (mmap_32bit_base != NULL) {
        map_addr = mmap_32bit_base;
    }
 
@@ -1124,6 +1168,10 @@ mmap_again:
    IF_DEBUG(linker,
             debugBelch("mmapForLinker: \tflags      %#0x\n",
                        MAP_PRIVATE | tryMap32Bit | fixed | flags));
+   IF_DEBUG(linker,
+            debugBelch("mmapForLinker: \tsize       %#0zx\n", bytes));
+   IF_DEBUG(linker,
+            debugBelch("mmapForLinker: \tmap_addr   %p\n", map_addr));
 
    result = mmap(map_addr, size, prot,
                  MAP_PRIVATE|tryMap32Bit|fixed|flags, fd, offset);
@@ -1136,10 +1184,9 @@ mmap_again:
 
 #if defined(MAP_LOW_MEM)
    if (RtsFlags.MiscFlags.linkerAlwaysPic) {
-   } else if (mmap_32bit_base != 0) {
-       if (result == map_addr) {
-           mmap_32bit_base = (StgWord8*)map_addr + size;
-       } else {
+       /* make no attempt at mapping low memory if we are assuming PIC */
+   } else if (mmap_32bit_base != NULL) {
+       if (result != map_addr) {
            if ((W_)result > 0x80000000) {
                // oops, we were given memory over 2Gb
                munmap(result,size);
@@ -1160,9 +1207,7 @@ mmap_again:
 #endif
            } else {
                // hmm, we were given memory somewhere else, but it's
-               // still under 2Gb so we can use it.  Next time, ask
-               // for memory right after the place we just got some
-               mmap_32bit_base = (StgWord8*)result + size;
+               // still under 2Gb so we can use it.
            }
        }
    } else {
@@ -1182,10 +1227,7 @@ mmap_again:
 #elif (defined(aarch64_TARGET_ARCH) || defined(aarch64_HOST_ARCH))
     // for aarch64 we need to make sure we stay within 4GB of the
     // mmap_32bit_base, and we also do not want to update it.
-//    if (mmap_32bit_base != (void*)&stg_upd_frame_info) {
-    if (result == map_addr) {
-        mmap_32bit_base = (void*)((uintptr_t)map_addr + size);
-    } else {
+    if (result != map_addr) {
         // upper limit 4GB - size of the object file - 1mb wiggle room.
         if(llabs((uintptr_t)result - (uintptr_t)&stg_upd_frame_info) > (2<<32) - size - (2<<20)) {
             // not within range :(
@@ -1196,20 +1238,23 @@ mmap_again:
             // TODO: some abort/mmap_32bit_base recomputation based on
             //       if mmap_32bit_base is changed, or still at stg_upd_frame_info
             goto mmap_again;
-        } else {
-            mmap_32bit_base = (void*)((uintptr_t)result + size);
         }
     }
-//   }
 #endif
 
-   IF_DEBUG(linker,
-            debugBelch("mmapForLinker: mapped %" FMT_Word
-                       " bytes starting at %p\n", (W_)size, result));
-   IF_DEBUG(linker,
-            debugBelch("mmapForLinker: done\n"));
+    if (mmap_32bit_base != NULL) {
+       // Next time, ask for memory right after our new mapping to maximize the
+       // chance that we get low memory.
+        mmap_32bit_base = (void*) ((uintptr_t)result + size);
+    }
 
-   return result;
+    IF_DEBUG(linker,
+            debugBelch("mmapForLinker: mapped %" FMT_Word
+                        " bytes starting at %p\n", (W_)size, result));
+    IF_DEBUG(linker,
+             debugBelch("mmapForLinker: done\n"));
+
+    return result;
 }
 
 /*
@@ -1257,6 +1302,9 @@ void munmapForLinker (void *addr, size_t bytes, const char *caller)
  */
 void mmapForLinkerMarkExecutable(void *start, size_t len)
 {
+    if (len == 0) {
+      return;
+    }
     IF_DEBUG(linker,
              debugBelch("mmapForLinkerMarkExecutable: protecting %" FMT_Word
                         " bytes starting at %p\n", (W_)len, start));
@@ -1570,7 +1618,7 @@ preloadObjectFile (pathchar *path)
     *
     * See also the misalignment logic for darwin below.
     */
-#if defined(darwin_HOST_OS)
+#if defined(darwin_HOST_OS) || defined(openbsd_HOST_OS)
    image = mmapForLinker(fileSize, PROT_READ|PROT_WRITE, MAP_PRIVATE, fd, 0);
 #else
    image = mmapForLinker(fileSize, PROT_READ|PROT_WRITE|PROT_EXEC,

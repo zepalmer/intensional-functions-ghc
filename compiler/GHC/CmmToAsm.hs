@@ -1044,10 +1044,10 @@ cmmStmtConFold stmt
                    CmmReg reg' | reg == reg' -> CmmComment (fsLit "nop")
                    new_src -> CmmAssign reg new_src
 
-        CmmStore addr src
+        CmmStore addr src align
            -> do addr' <- cmmExprConFold DataReference addr
                  src'  <- cmmExprConFold DataReference src
-                 return $ CmmStore addr' src'
+                 return $ CmmStore addr' src' align
 
         CmmCall { cml_target = addr }
            -> do addr' <- cmmExprConFold JumpReference addr
@@ -1088,7 +1088,7 @@ cmmExprConFold referenceKind expr = do
     cmmExprNative referenceKind expr'
 
 cmmExprCon :: NCGConfig -> CmmExpr -> CmmExpr
-cmmExprCon config (CmmLoad addr rep) = CmmLoad (cmmExprCon config addr) rep
+cmmExprCon config (CmmLoad addr rep align) = CmmLoad (cmmExprCon config addr) rep align
 cmmExprCon config (CmmMachOp mop args)
     = cmmMachOpFold (ncgPlatform config) mop (map (cmmExprCon config) args)
 cmmExprCon _ other = other
@@ -1101,9 +1101,9 @@ cmmExprNative referenceKind expr = do
      let platform = ncgPlatform config
          arch = platformArch platform
      case expr of
-        CmmLoad addr rep
+        CmmLoad addr rep align
           -> do addr' <- cmmExprNative DataReference addr
-                return $ CmmLoad addr' rep
+                return $ CmmLoad addr' rep align
 
         CmmMachOp mop args
           -> do args' <- mapM (cmmExprNative DataReference) args

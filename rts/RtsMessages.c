@@ -73,6 +73,12 @@ errorBelch(const char*s, ...)
 }
 
 void
+_warnFail(const char*filename, unsigned int linenum)
+{
+    errorBelch("ASSERTION FAILED: file %s, line %u\n", filename, linenum);
+}
+
+void
 verrorBelch(const char*s, va_list ap)
 {
   (*errorMsgFn)(s,ap);
@@ -321,4 +327,13 @@ void
 rtsBadAlignmentBarf()
 {
     barf("Encountered incorrectly aligned pointer. This can't be good.");
+}
+
+// Used by code generator
+void rtsOutOfBoundsAccess(void) GNUC3_ATTRIBUTE(__noreturn__);
+
+void
+rtsOutOfBoundsAccess()
+{
+    barf("Encountered out of bounds array access.");
 }

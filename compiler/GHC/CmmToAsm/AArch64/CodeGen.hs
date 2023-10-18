@@ -1,4 +1,5 @@
-{-# language GADTs #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE BinaryLiterals #-}
@@ -11,8 +12,12 @@ module GHC.CmmToAsm.AArch64.CodeGen (
 
 where
 
+#include "HsVersions.h"
+
 -- NCG stuff:
 import GHC.Prelude hiding (EQ)
+
+import Data.Word
 
 import GHC.Platform.Regs
 import GHC.CmmToAsm.AArch64.Instr
@@ -49,8 +54,7 @@ import GHC.Types.SrcLoc  ( srcSpanFile, srcSpanStartLine, srcSpanStartCol )
 import GHC.Data.OrdList
 import GHC.Utils.Outputable
 
-import Control.Monad    ( mapAndUnzipM, when, foldM )
-import Data.Word
+import Control.Monad    ( mapAndUnzipM, foldM )
 import Data.Maybe
 import GHC.Float
 
@@ -288,7 +292,7 @@ stmtToInstrs bid stmt = do
           where ty = cmmRegType platform reg
                 format = cmmTypeFormat ty
 
-      CmmStore addr src
+      CmmStore addr src _alignment
         | isFloatType ty         -> assignMem_FltCode format addr src
         | otherwise              -> assignMem_IntCode format addr src
           where ty = cmmExprType platform src
@@ -396,13 +400,60 @@ getFloatReg expr = do
 litToImm' :: CmmLit -> NatM (Operand, InstrBlock)
 litToImm' lit = return (OpImm (litToImm lit), nilOL)
 
-
 getRegister :: CmmExpr -> NatM Register
 getRegister e = do
   config <- getConfig
   getRegister' config (ncgPlatform config) e
 
+-- | The register width to be used for an operation on the given width
+-- operand.
+opRegWidth :: Width -> Width
+opRegWidth W64 = W64  -- x
+opRegWidth W32 = W32  -- w
+opRegWidth W16 = W32  -- w
+opRegWidth W8  = W32  -- w
+opRegWidth w   = pprPanic "opRegWidth" (text "Unsupported width" <+> ppr w)
+
+-- Note [Signed arithmetic on AArch64]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-- Handling signed arithmetic on sub-word-size values on AArch64 is a bit
+-- tricky as Cmm's type system does not capture signedness. While 32-bit values
+-- are fairly easy to handle due to AArch64's 32-bit instruction variants
+-- (denoted by use of %wN registers), 16- and 8-bit values require quite some
+-- care.
+--
+-- We handle 16-and 8-bit values by using the 32-bit operations and
+-- sign-/zero-extending operands and truncate results as necessary. For
+-- simplicity we maintain the invariant that a register containing a
+-- sub-word-size value always contains the zero-extended form of that value
+-- in between operations.
+--
+-- For instance, consider the program,
+--
+--    test(bits64 buffer)
+--      bits8 a = bits8[buffer];
+--      bits8 b = %mul(a, 42);
+--      bits8 c = %not(b);
+--      bits8 d = %shrl(c, 4::bits8);
+--      return (d);
+--    }
+--
+-- This program begins by loading `a` from memory, for which we use a
+-- zero-extended byte-size load.  We next sign-extend `a` to 32-bits, and use a
+-- 32-bit multiplication to compute `b`, and truncate the result back down to
+-- 8-bits.
+--
+-- Next we compute `c`: The `%not` requires no extension of its operands, but
+-- we must still truncate the result back down to 8-bits. Finally the `%shrl`
+-- requires no extension and no truncate since we can assume that
+-- `c` is zero-extended.
+--
+-- TODO:
+--   Don't use Width in Operands
+--   Instructions should rather carry a RegWidth
+--
 -- Note [Handling PIC on AArch64]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 -- AArch64 does not have a special PIC register, the general approach is to
 -- simply go through the GOT, and there is assembly support for this:
 --
@@ -451,9 +502,9 @@ getRegister' config plat expr
           return (Any (intFormat W16) (\dst -> unitOL $ annExpr expr (MOV (OpReg W16 dst) (OpImm (ImmInteger (narrowU W16 i))))))
 
         CmmInt i W8  -> do
-          return (Any (intFormat W8) (\dst -> unitOL $ annExpr expr (MOV (OpReg W8 dst) (OpImm (ImmInteger (narrowS W8 i))))))
+          return (Any (intFormat W8) (\dst -> unitOL $ annExpr expr (MOV (OpReg W8 dst) (OpImm (ImmInteger (narrowU W8 i))))))
         CmmInt i W16 -> do
-          return (Any (intFormat W16) (\dst -> unitOL $ annExpr expr (MOV (OpReg W16 dst) (OpImm (ImmInteger (narrowS W16 i))))))
+          return (Any (intFormat W16) (\dst -> unitOL $ annExpr expr (MOV (OpReg W16 dst) (OpImm (ImmInteger (narrowU W16 i))))))
 
         -- We need to be careful to not shorten this for negative literals.
         -- Those need the upper bits set. We'd either have to explicitly sign
@@ -549,8 +600,8 @@ getRegister' config plat expr
         CmmLabelDiffOff _ _ _ _ -> pprPanic "getRegister' (CmmLit:CmmLabelOff): " (pdoc plat expr)
         CmmBlock _ -> pprPanic "getRegister' (CmmLit:CmmLabelOff): " (pdoc plat expr)
         CmmHighStackMark -> pprPanic "getRegister' (CmmLit:CmmLabelOff): " (pdoc plat expr)
-    CmmLoad mem rep -> do
-      Amode addr addr_code <- getAmode plat mem
+    CmmLoad mem rep _ -> do
+      Amode addr addr_code <- getAmode plat (typeWidth rep) mem
       let format = cmmTypeFormat rep
       return (Any format (\dst -> addr_code `snocOL` LDR format (OpReg (formatToWidth format) dst) (OpAddr addr)))
     CmmStackSlot _ _
@@ -577,9 +628,13 @@ getRegister' config plat expr
     CmmMachOp op [e] -> do
       (reg, _format, code) <- getSomeReg e
       case op of
-        MO_Not w -> return $ Any (intFormat w) (\dst -> code `snocOL` MVN (OpReg w dst) (OpReg w reg))
+        MO_Not w -> return $ Any (intFormat w) $ \dst ->
+            let w' = opRegWidth w
+             in code `snocOL`
+                MVN (OpReg w' dst) (OpReg w' reg) `appOL`
+                truncateReg w' w dst -- See Note [Signed arithmetic on AArch64]
 
-        MO_S_Neg w -> return $ Any (intFormat w) (\dst -> code `snocOL` NEG (OpReg w dst) (OpReg w reg))
+        MO_S_Neg w -> negate code w reg
         MO_F_Neg w -> return $ Any (floatFormat w) (\dst -> code `snocOL` NEG (OpReg w dst) (OpReg w reg))
 
         MO_SF_Conv from to -> return $ Any (floatFormat to) (\dst -> code `snocOL` SCVTF (OpReg to dst) (OpReg from reg))  -- (Signed ConVerT Float)
@@ -589,20 +644,41 @@ getRegister' config plat expr
         -- Note, UBFM and SBFM expect source and target register to be of the same size, so we'll use @max from to@
         -- UBFM will set the high bits to 0. SBFM will copy the sign (sign extend).
         MO_UU_Conv from to -> return $ Any (intFormat to) (\dst -> code `snocOL` UBFM (OpReg (max from to) dst) (OpReg (max from to) reg) (OpImm (ImmInt 0)) (toImm (min from to)))
-        MO_SS_Conv from to -> return $ Any (intFormat to) (\dst -> code `snocOL` SBFM (OpReg (max from to) dst) (OpReg (max from to) reg) (OpImm (ImmInt 0)) (toImm (min from to)))
+        MO_SS_Conv from to -> ss_conv from to reg code
         MO_FF_Conv from to -> return $ Any (floatFormat to) (\dst -> code `snocOL` FCVT (OpReg to dst) (OpReg from reg))
 
         -- Conversions
         MO_XX_Conv _from to -> swizzleRegisterRep (intFormat to) <$> getRegister e
 
         _ -> pprPanic "getRegister' (monadic CmmMachOp):" (pdoc plat expr)
-      where toImm W8 =  (OpImm (ImmInt 7))
-            toImm W16 = (OpImm (ImmInt 15))
-            toImm W32 = (OpImm (ImmInt 31))
-            toImm W64 = (OpImm (ImmInt 63))
-            toImm W128 = (OpImm (ImmInt 127))
-            toImm W256 = (OpImm (ImmInt 255))
-            toImm W512 = (OpImm (ImmInt 511))
+      where
+        toImm W8 =  (OpImm (ImmInt 7))
+        toImm W16 = (OpImm (ImmInt 15))
+        toImm W32 = (OpImm (ImmInt 31))
+        toImm W64 = (OpImm (ImmInt 63))
+        toImm W128 = (OpImm (ImmInt 127))
+        toImm W256 = (OpImm (ImmInt 255))
+        toImm W512 = (OpImm (ImmInt 511))
+
+        -- In the case of 16- or 8-bit values we need to sign-extend to 32-bits
+        -- See Note [Signed arithmetic on AArch64].
+        negate code w reg = do
+            let w' = opRegWidth w
+            return $ Any (intFormat w) $ \dst ->
+                code `appOL`
+                signExtendReg w w' reg `snocOL`
+                NEG (OpReg w' dst) (OpReg w' reg) `appOL`
+                truncateReg w' w dst
+
+        ss_conv from to reg code =
+            let w' = opRegWidth (max from to)
+            in return $ Any (intFormat to) $ \dst ->
+                code `snocOL`
+                SBFM (OpReg w' dst) (OpReg w' reg) (OpImm (ImmInt 0)) (toImm (min from to)) `appOL`
+                -- At this point an 8- or 16-bit value would be sign-extended
+                -- to 32-bits. Truncate back down the final width.
+                truncateReg w' to dst
+
     -- Dyadic machops:
     --
     -- The general idea is:
@@ -629,6 +705,15 @@ getRegister' config plat expr
       where w' = formatToWidth (cmmTypeFormat (cmmRegType plat reg))
             r' = getRegisterReg plat reg
 
+    CmmMachOp (MO_U_Quot w) [x, y] | w == W8 -> do
+      (reg_x, _format_x, code_x) <- getSomeReg x
+      (reg_y, _format_y, code_y) <- getSomeReg y
+      return $ Any (intFormat w) (\dst -> code_x `appOL` code_y `snocOL` annExpr expr (UXTB (OpReg w reg_x) (OpReg w reg_x)) `snocOL` (UXTB (OpReg w reg_y) (OpReg w reg_y)) `snocOL` (UDIV (OpReg w dst) (OpReg w reg_x) (OpReg w reg_y)))
+    CmmMachOp (MO_U_Quot w) [x, y] | w == W16 -> do
+      (reg_x, _format_x, code_x) <- getSomeReg x
+      (reg_y, _format_y, code_y) <- getSomeReg y
+      return $ Any (intFormat w) (\dst -> code_x `appOL` code_y `snocOL` annExpr expr (UXTH (OpReg w reg_x) (OpReg w reg_x)) `snocOL` (UXTH (OpReg w reg_y) (OpReg w reg_y)) `snocOL` (UDIV (OpReg w dst) (OpReg w reg_x) (OpReg w reg_y)))
+
     -- 2. Shifts. x << n, x >> n.
     CmmMachOp (MO_Shl w) [x, (CmmLit (CmmInt n _))] | w == W32, 0 <= n, n < 32 -> do
       (reg_x, _format_x, code_x) <- getSomeReg x
@@ -637,9 +722,51 @@ getRegister' config plat expr
       (reg_x, _format_x, code_x) <- getSomeReg x
       return $ Any (intFormat w) (\dst -> code_x `snocOL` annExpr expr (LSL (OpReg w dst) (OpReg w reg_x) (OpImm (ImmInteger n))))
 
+    CmmMachOp (MO_S_Shr w) [x, (CmmLit (CmmInt n _))] | w == W8, 0 <= n, n < 8 -> do
+      (reg_x, _format_x, code_x) <- getSomeReg x
+      return $ Any (intFormat w) (\dst -> code_x `snocOL` annExpr expr (SBFX (OpReg w dst) (OpReg w reg_x) (OpImm (ImmInteger n)) (OpImm (ImmInteger (8-n)))))
+    CmmMachOp (MO_S_Shr w) [x, y] | w == W8 -> do
+      (reg_x, _format_x, code_x) <- getSomeReg x
+      (reg_y, _format_y, code_y) <- getSomeReg y
+      return $ Any (intFormat w) (\dst -> code_x `appOL` code_y `snocOL` annExpr expr (SXTB (OpReg w reg_x) (OpReg w reg_x)) `snocOL` (ASR (OpReg w dst) (OpReg w reg_x) (OpReg w reg_y)))
+
+    CmmMachOp (MO_S_Shr w) [x, (CmmLit (CmmInt n _))] | w == W16, 0 <= n, n < 16 -> do
+      (reg_x, _format_x, code_x) <- getSomeReg x
+      return $ Any (intFormat w) (\dst -> code_x `snocOL` annExpr expr (SBFX (OpReg w dst) (OpReg w reg_x) (OpImm (ImmInteger n)) (OpImm (ImmInteger (16-n)))))
+    CmmMachOp (MO_S_Shr w) [x, y] | w == W16 -> do
+      (reg_x, _format_x, code_x) <- getSomeReg x
+      (reg_y, _format_y, code_y) <- getSomeReg y
+      return $ Any (intFormat w) (\dst -> code_x `appOL` code_y `snocOL` annExpr expr (SXTH (OpReg w reg_x) (OpReg w reg_x)) `snocOL` (ASR (OpReg w dst) (OpReg w reg_x) (OpReg w reg_y)))
+
+    CmmMachOp (MO_S_Shr w) [x, (CmmLit (CmmInt n _))] | w == W32, 0 <= n, n < 32 -> do
+      (reg_x, _format_x, code_x) <- getSomeReg x
+      return $ Any (intFormat w) (\dst -> code_x `snocOL` annExpr expr (ASR (OpReg w dst) (OpReg w reg_x) (OpImm (ImmInteger n))))
+
+    CmmMachOp (MO_S_Shr w) [x, (CmmLit (CmmInt n _))] | w == W64, 0 <= n, n < 64 -> do
+      (reg_x, _format_x, code_x) <- getSomeReg x
+      return $ Any (intFormat w) (\dst -> code_x `snocOL` annExpr expr (ASR (OpReg w dst) (OpReg w reg_x) (OpImm (ImmInteger n))))
+
+
+    CmmMachOp (MO_U_Shr w) [x, (CmmLit (CmmInt n _))] | w == W8, 0 <= n, n < 8 -> do
+      (reg_x, _format_x, code_x) <- getSomeReg x
+      return $ Any (intFormat w) (\dst -> code_x `snocOL` annExpr expr (UBFX (OpReg w dst) (OpReg w reg_x) (OpImm (ImmInteger n)) (OpImm (ImmInteger (8-n)))))
+    CmmMachOp (MO_U_Shr w) [x, y] | w == W8 -> do
+      (reg_x, _format_x, code_x) <- getSomeReg x
+      (reg_y, _format_y, code_y) <- getSomeReg y
+      return $ Any (intFormat w) (\dst -> code_x `appOL` code_y `snocOL` annExpr expr (UXTB (OpReg w reg_x) (OpReg w reg_x)) `snocOL` (ASR (OpReg w dst) (OpReg w reg_x) (OpReg w reg_y)))
+
+    CmmMachOp (MO_U_Shr w) [x, (CmmLit (CmmInt n _))] | w == W16, 0 <= n, n < 16 -> do
+      (reg_x, _format_x, code_x) <- getSomeReg x
+      return $ Any (intFormat w) (\dst -> code_x `snocOL` annExpr expr (UBFX (OpReg w dst) (OpReg w reg_x) (OpImm (ImmInteger n)) (OpImm (ImmInteger (16-n)))))
+    CmmMachOp (MO_U_Shr w) [x, y] | w == W16 -> do
+      (reg_x, _format_x, code_x) <- getSomeReg x
+      (reg_y, _format_y, code_y) <- getSomeReg y
+      return $ Any (intFormat w) (\dst -> code_x `appOL` code_y `snocOL` annExpr expr (UXTH (OpReg w reg_x) (OpReg w reg_x)) `snocOL` (ASR (OpReg w dst) (OpReg w reg_x) (OpReg w reg_y)))
+
     CmmMachOp (MO_U_Shr w) [x, (CmmLit (CmmInt n _))] | w == W32, 0 <= n, n < 32 -> do
       (reg_x, _format_x, code_x) <- getSomeReg x
       return $ Any (intFormat w) (\dst -> code_x `snocOL` annExpr expr (LSR (OpReg w dst) (OpReg w reg_x) (OpImm (ImmInteger n))))
+
     CmmMachOp (MO_U_Shr w) [x, (CmmLit (CmmInt n _))] | w == W64, 0 <= n, n < 64 -> do
       (reg_x, _format_x, code_x) <- getSomeReg x
       return $ Any (intFormat w) (\dst -> code_x `snocOL` annExpr expr (LSR (OpReg w dst) (OpReg w reg_x) (OpImm (ImmInteger n))))
@@ -658,40 +785,75 @@ getRegister' config plat expr
     -- Generic case.
     CmmMachOp op [x, y] -> do
       -- alright, so we have an operation, and two expressions. And we want to essentially do
-      -- ensure we get float regs
-      let genOp w op = do
-            (reg_x, format_x, code_x) <- getSomeReg x
-            (reg_y, format_y, code_y) <- getSomeReg y
-            when ((isFloatFormat format_x && isIntFormat format_y) || (isIntFormat format_x && isFloatFormat format_y)) $ pprPanic "getRegister:genOp" (text "formats don't match:" <+> text (show format_x) <+> text "/=" <+> text (show format_y))
-            return $ Any format_x (\dst -> code_x `appOL` code_y `appOL` op (OpReg w dst) (OpReg w reg_x) (OpReg w reg_y))
-
-          withTempIntReg w op = OpReg w <$> getNewRegNat (intFormat w) >>= op
+      -- ensure we get float regs (TODO(Ben): What?)
+      let withTempIntReg w op = OpReg w <$> getNewRegNat (intFormat w) >>= op
           -- withTempFloatReg w op = OpReg w <$> getNewRegNat (floatFormat w) >>= op
 
-          intOp w op = do
+          -- A "plain" operation.
+          bitOp w op = do
             -- compute x<m> <- x
             -- compute x<o> <- y
             -- <OP> x<n>, x<m>, x<o>
-            (reg_x, _format_x, code_x) <- getSomeReg x
-            (reg_y, _format_y, code_y) <- getSomeReg y
-            return $ Any (intFormat w) (\dst -> code_x `appOL` code_y `appOL` op (OpReg w dst) (OpReg w reg_x) (OpReg w reg_y))
+            (reg_x, format_x, code_x) <- getSomeReg x
+            (reg_y, format_y, code_y) <- getSomeReg y
+            MASSERT2(isIntFormat format_x == isIntFormat format_y, text "bitOp: incompatible")
+            return $ Any (intFormat w) (\dst ->
+                code_x `appOL`
+                code_y `appOL`
+                op (OpReg w dst) (OpReg w reg_x) (OpReg w reg_y))
+
+          -- A (potentially signed) integer operation.
+          -- In the case of 8- and 16-bit signed arithmetic we must first
+          -- sign-extend both arguments to 32-bits.
+          -- See Note [Signed arithmetic on AArch64].
+          intOp is_signed w op = do
+              -- compute x<m> <- x
+              -- compute x<o> <- y
+              -- <OP> x<n>, x<m>, x<o>
+              (reg_x, format_x, code_x) <- getSomeReg x
+              (reg_y, format_y, code_y) <- getSomeReg y
+              MASSERT2(isIntFormat format_x && isIntFormat format_y, text "intOp: non-int")
+              -- This is the width of the registers on which the operation
+              -- should be performed.
+              let w' = opRegWidth w
+                  signExt r
+                    | not is_signed  = nilOL
+                    | otherwise      = signExtendReg w w' r
+              return $ Any (intFormat w) $ \dst ->
+                  code_x `appOL`
+                  code_y `appOL`
+                  -- sign-extend both operands
+                  signExt reg_x `appOL`
+                  signExt reg_y `appOL`
+                  op (OpReg w' dst) (OpReg w' reg_x) (OpReg w' reg_y) `appOL`
+                  truncateReg w' w dst -- truncate back to the operand's original width
+
           floatOp w op = do
-            (reg_fx, _format_x, code_fx) <- getFloatReg x
-            (reg_fy, _format_y, code_fy) <- getFloatReg y
+            (reg_fx, format_x, code_fx) <- getFloatReg x
+            (reg_fy, format_y, code_fy) <- getFloatReg y
+            MASSERT2(isFloatFormat format_x && isFloatFormat format_y, text "floatOp: non-float")
             return $ Any (floatFormat w) (\dst -> code_fx `appOL` code_fy `appOL` op (OpReg w dst) (OpReg w reg_fx) (OpReg w reg_fy))
+
           -- need a special one for conditionals, as they return ints
           floatCond w op = do
-            (reg_fx, _format_x, code_fx) <- getFloatReg x
-            (reg_fy, _format_y, code_fy) <- getFloatReg y
+            (reg_fx, format_x, code_fx) <- getFloatReg x
+            (reg_fy, format_y, code_fy) <- getFloatReg y
+            MASSERT2(isFloatFormat format_x && isFloatFormat format_y, text "floatCond: non-float")
             return $ Any (intFormat w) (\dst -> code_fx `appOL` code_fy `appOL` op (OpReg w dst) (OpReg w reg_fx) (OpReg w reg_fy))
 
       case op of
         -- Integer operations
-        -- Add/Sub should only be Interger Options.
-        -- But our Cmm parser doesn't care about types
-        -- and thus we end up with <float> + <float> => MO_Add <float> <float>
-        MO_Add w -> genOp w (\d x y -> unitOL $ annExpr expr (ADD d x y))
-        MO_Sub w -> genOp w (\d x y -> unitOL $ annExpr expr (SUB d x y))
+        -- Add/Sub should only be Integer Options.
+        MO_Add w -> intOp False w (\d x y -> unitOL $ annExpr expr (ADD d x y))
+        -- TODO: Handle sub-word case
+        MO_Sub w -> intOp False w (\d x y -> unitOL $ annExpr expr (SUB d x y))
+
+        -- Note [CSET]
+        --
+        -- Setting conditional flags: the architecture internally knows the
+        -- following flag bits.  And based on thsoe comparisons as in the
+        -- table below.
+        --
         --    31  30  29  28
         --  .---+---+---+---+-- - -
         --  | N | Z | C | V |
@@ -724,13 +886,15 @@ getRegister' config plat expr
         --  |  NV  | Never                               | Any             | 1111     |
         --- '-------------------------------------------------------------------------'
 
-        MO_Eq w -> intOp w (\d x y -> toOL [ CMP x y, CSET d EQ ])
-        MO_Ne w -> intOp w (\d x y -> toOL [ CMP x y, CSET d NE ])
-        MO_Mul w -> intOp w (\d x y -> unitOL $ MUL d x y)
+        -- N.B. We needn't sign-extend sub-word size (in)equality comparisons
+        -- since we don't care about ordering.
+        MO_Eq w     -> bitOp w (\d x y -> toOL [ CMP x y, CSET d EQ ])
+        MO_Ne w     -> bitOp w (\d x y -> toOL [ CMP x y, CSET d NE ])
 
         -- Signed multiply/divide
-        MO_S_MulMayOflo w -> intOp w (\d x y -> toOL [ MUL d x y, CSET d VS ])
-        MO_S_Quot w -> intOp w (\d x y -> unitOL $ SDIV d x y)
+        MO_Mul w          -> intOp True w (\d x y -> unitOL $ MUL d x y)
+        MO_S_MulMayOflo w -> intOp True w (\d x y -> toOL [ MUL d x y, CSET d VS ])
+        MO_S_Quot w       -> intOp True w (\d x y -> unitOL $ SDIV d x y)
 
         -- No native rem instruction. So we'll compute the following
         -- Rd  <- Rx / Ry             | 2 <- 7 / 3      -- SDIV Rd Rx Ry
@@ -740,25 +904,25 @@ getRegister' config plat expr
         --        '--------------------------'
         -- Note the swap in Rx and Ry.
         MO_S_Rem w -> withTempIntReg w $ \t ->
-          intOp w (\d x y -> toOL [ SDIV t x y, MSUB d t y x ])
+                      intOp True w (\d x y -> toOL [ SDIV t x y, MSUB d t y x ])
 
         -- Unsigned multiply/divide
         MO_U_MulMayOflo _w -> unsupportedP plat expr
-        MO_U_Quot w -> intOp w (\d x y -> unitOL $ UDIV d x y)
+        MO_U_Quot w -> intOp False w (\d x y -> unitOL $ UDIV d x y)
         MO_U_Rem w  -> withTempIntReg w $ \t ->
-          intOp w (\d x y -> toOL [ UDIV t x y, MSUB d t y x ])
+                       intOp False w (\d x y -> toOL [ UDIV t x y, MSUB d t y x ])
 
-        -- Signed comparisons -- see above for the CSET discussion
-        MO_S_Ge w -> intOp w (\d x y -> toOL [ CMP x y, CSET d SGE ])
-        MO_S_Le w -> intOp w (\d x y -> toOL [ CMP x y, CSET d SLE ])
-        MO_S_Gt w -> intOp w (\d x y -> toOL [ CMP x y, CSET d SGT ])
-        MO_S_Lt w -> intOp w (\d x y -> toOL [ CMP x y, CSET d SLT ])
+        -- Signed comparisons -- see Note [CSET]
+        MO_S_Ge w     -> intOp True  w (\d x y -> toOL [ CMP x y, CSET d SGE ])
+        MO_S_Le w     -> intOp True  w (\d x y -> toOL [ CMP x y, CSET d SLE ])
+        MO_S_Gt w     -> intOp True  w (\d x y -> toOL [ CMP x y, CSET d SGT ])
+        MO_S_Lt w     -> intOp True  w (\d x y -> toOL [ CMP x y, CSET d SLT ])
 
         -- Unsigned comparisons
-        MO_U_Ge w -> intOp w (\d x y -> toOL [ CMP x y, CSET d UGE ])
-        MO_U_Le w -> intOp w (\d x y -> toOL [ CMP x y, CSET d ULE ])
-        MO_U_Gt w -> intOp w (\d x y -> toOL [ CMP x y, CSET d UGT ])
-        MO_U_Lt w -> intOp w (\d x y -> toOL [ CMP x y, CSET d ULT ])
+        MO_U_Ge w     -> intOp False w (\d x y -> toOL [ CMP x y, CSET d UGE ])
+        MO_U_Le w     -> intOp False w (\d x y -> toOL [ CMP x y, CSET d ULE ])
+        MO_U_Gt w     -> intOp False w (\d x y -> toOL [ CMP x y, CSET d UGT ])
+        MO_U_Lt w     -> intOp False w (\d x y -> toOL [ CMP x y, CSET d ULT ])
 
         -- Floating point arithmetic
         MO_F_Add w   -> floatOp w (\d x y -> unitOL $ ADD d x y)
@@ -781,13 +945,12 @@ getRegister' config plat expr
         MO_F_Lt w    -> floatCond w (\d x y -> toOL [ CMP x y, CSET d OLT ]) -- x < y <=> y >= x
 
         -- Bitwise operations
-        MO_And   w -> intOp w (\d x y -> unitOL $ AND d x y)
-        MO_Or    w -> intOp w (\d x y -> unitOL $ ORR d x y)
-        MO_Xor   w -> intOp w (\d x y -> unitOL $ EOR d x y)
-        -- MO_Not   W64 ->
-        MO_Shl   w -> intOp w (\d x y -> unitOL $ LSL d x y)
-        MO_U_Shr w -> intOp w (\d x y -> unitOL $ LSR d x y)
-        MO_S_Shr w -> intOp w (\d x y -> unitOL $ ASR d x y)
+        MO_And   w -> bitOp w (\d x y -> unitOL $ AND d x y)
+        MO_Or    w -> bitOp w (\d x y -> unitOL $ ORR d x y)
+        MO_Xor   w -> bitOp w (\d x y -> unitOL $ EOR d x y)
+        MO_Shl   w -> intOp False w (\d x y -> unitOL $ LSL d x y)
+        MO_U_Shr w -> intOp False w (\d x y -> unitOL $ LSR d x y)
+        MO_S_Shr w -> intOp True  w (\d x y -> unitOL $ ASR d x y)
 
         -- TODO
 
@@ -816,29 +979,58 @@ getRegister' config plat expr
                                     ,0b1111_1111]
 
 
+-- | Instructions to sign-extend the value in the given register from width @w@
+-- up to width @w'@.
+signExtendReg :: Width -> Width -> Reg -> OrdList Instr
+signExtendReg w w' r =
+    case w of
+      W64 -> nilOL
+      W32
+        | w' == W32 -> nilOL
+        | otherwise -> unitOL $ SXTH (OpReg w' r) (OpReg w' r)
+      W16           -> unitOL $ SXTH (OpReg w' r) (OpReg w' r)
+      W8            -> unitOL $ SXTB (OpReg w' r) (OpReg w' r)
+      _             -> panic "intOp"
+
+-- | Instructions to truncate the value in the given register from width @w@
+-- down to width @w'@.
+truncateReg :: Width -> Width -> Reg -> OrdList Instr
+truncateReg w w' r =
+    case w of
+      W64 -> nilOL
+      W32
+        | w' == W32 -> nilOL
+      _   -> unitOL $ UBFM (OpReg w r)
+                           (OpReg w r)
+                           (OpImm (ImmInt 0))
+                           (OpImm $ ImmInt $ widthInBits w' - 1)
+
 -- -----------------------------------------------------------------------------
 --  The 'Amode' type: Memory addressing modes passed up the tree.
 data Amode = Amode AddrMode InstrBlock
 
-getAmode :: Platform -> CmmExpr -> NatM Amode
+getAmode :: Platform
+         -> Width     -- ^ width of loaded value
+         -> CmmExpr
+         -> NatM Amode
 -- TODO: Specialize stuff we can destructure here.
 
 -- OPTIMIZATION WARNING: Addressing modes.
 -- Addressing options:
 -- LDUR/STUR: imm9: -256 - 255
-getAmode platform (CmmRegOff reg off) | -256 <= off, off <= 255
+getAmode platform _ (CmmRegOff reg off) | -256 <= off, off <= 255
   = return $ Amode (AddrRegImm reg' off') nilOL
     where reg' = getRegisterReg platform reg
           off' = ImmInt off
 -- LDR/STR: imm12: if reg is 32bit: 0 -- 16380 in multiples of 4
-getAmode platform (CmmRegOff reg off)
-  | typeWidth (cmmRegType platform reg) == W32, 0 <= off, off <= 16380, off `mod` 4 == 0
+getAmode platform W32 (CmmRegOff reg off)
+  | 0 <= off, off <= 16380, off `mod` 4 == 0
   = return $ Amode (AddrRegImm reg' off') nilOL
     where reg' = getRegisterReg platform reg
           off' = ImmInt off
 -- LDR/STR: imm12: if reg is 64bit: 0 -- 32760 in multiples of 8
-getAmode platform (CmmRegOff reg off)
-  | typeWidth (cmmRegType platform reg) == W64, 0 <= off, off <= 32760, off `mod` 8 == 0
+getAmode platform W64 (CmmRegOff reg off)
+  | 0 <= off, off <= 32760, off `mod` 8 == 0
   = return $ Amode (AddrRegImm reg' off') nilOL
     where reg' = getRegisterReg platform reg
           off' = ImmInt off
@@ -847,18 +1039,18 @@ getAmode platform (CmmRegOff reg off)
 -- CmmStore (CmmMachOp (MO_Add w) [CmmLoad expr, CmmLit (CmmInt n w')]) (expr2)
 -- E.g. a CmmStoreOff really. This can be translated to `str $expr2, [$expr, #n ]
 -- for `n` in range.
-getAmode _platform (CmmMachOp (MO_Add _w) [expr, CmmLit (CmmInt off _w')])
+getAmode _platform _ (CmmMachOp (MO_Add _w) [expr, CmmLit (CmmInt off _w')])
   | -256 <= off, off <= 255
   = do (reg, _format, code) <- getSomeReg expr
        return $ Amode (AddrRegImm reg (ImmInteger off)) code
 
-getAmode _platform (CmmMachOp (MO_Sub _w) [expr, CmmLit (CmmInt off _w')])
+getAmode _platform _ (CmmMachOp (MO_Sub _w) [expr, CmmLit (CmmInt off _w')])
   | -256 <= -off, -off <= 255
   = do (reg, _format, code) <- getSomeReg expr
        return $ Amode (AddrRegImm reg (ImmInteger (-off))) code
 
 -- Generic case
-getAmode _platform expr
+getAmode _platform _ expr
   = do (reg, _format, code) <- getSomeReg expr
        return $ Amode (AddrReg reg) code
 
@@ -884,11 +1076,12 @@ assignMem_IntCode rep addrE srcE
   = do
     (src_reg, _format, code) <- getSomeReg srcE
     platform <- getPlatform
-    Amode addr addr_code <- getAmode platform addrE
+    let w = formatToWidth rep
+    Amode addr addr_code <- getAmode platform w addrE
     return $ COMMENT (text "CmmStore" <+> parens (text (show addrE)) <+> parens (text (show srcE)))
             `consOL` (code
             `appOL` addr_code
-            `snocOL` STR rep (OpReg (formatToWidth rep) src_reg) (OpAddr addr))
+            `snocOL` STR rep (OpReg w src_reg) (OpAddr addr))
 
 assignReg_IntCode _ reg src
   = do
@@ -940,11 +1133,28 @@ genCondJump bid expr = do
       -- Generic case.
       CmmMachOp mop [x, y] -> do
 
-        let bcond w cmp = do
-              -- compute both sides.
-              (reg_x, _format_x, code_x) <- getSomeReg x
-              (reg_y, _format_y, code_y) <- getSomeReg y
-              return $ code_x `appOL` code_y `snocOL` CMP (OpReg w reg_x) (OpReg w reg_y) `snocOL` (annExpr expr (BCOND cmp (TBlock bid)))
+        let ubcond w cmp = do
+                -- compute both sides.
+                (reg_x, _format_x, code_x) <- getSomeReg x
+                (reg_y, _format_y, code_y) <- getSomeReg y
+                let x' = OpReg w reg_x
+                    y' = OpReg w reg_y
+                return $ case w of
+                  W8  -> code_x `appOL` code_y `appOL` toOL [ UXTB x' x', UXTB y' y', CMP x' y', (annExpr expr (BCOND cmp (TBlock bid))) ]
+                  W16 -> code_x `appOL` code_y `appOL` toOL [ UXTH x' x', UXTH y' y', CMP x' y', (annExpr expr (BCOND cmp (TBlock bid))) ]
+                  _   -> code_x `appOL` code_y `appOL` toOL [                         CMP x' y', (annExpr expr (BCOND cmp (TBlock bid))) ]
+
+            sbcond w cmp = do
+                -- compute both sides.
+                (reg_x, _format_x, code_x) <- getSomeReg x
+                (reg_y, _format_y, code_y) <- getSomeReg y
+                let x' = OpReg w reg_x
+                    y' = OpReg w reg_y
+                return $ case w of
+                  W8  -> code_x `appOL` code_y `appOL` toOL [ SXTB x' x', SXTB y' y', CMP x' y', (annExpr expr (BCOND cmp (TBlock bid))) ]
+                  W16 -> code_x `appOL` code_y `appOL` toOL [ SXTH x' x', SXTH y' y', CMP x' y', (annExpr expr (BCOND cmp (TBlock bid))) ]
+                  _   -> code_x `appOL` code_y `appOL` toOL [                         CMP x' y', (annExpr expr (BCOND cmp (TBlock bid))) ]
+
             fbcond w cmp = do
               -- ensure we get float regs
               (reg_fx, _format_fx, code_fx) <- getFloatReg x
@@ -960,17 +1170,17 @@ genCondJump bid expr = do
           MO_F_Lt w -> fbcond w OLT
           MO_F_Le w -> fbcond w OLE
 
-          MO_Eq w   -> bcond w EQ
-          MO_Ne w   -> bcond w NE
+          MO_Eq w   -> sbcond w EQ
+          MO_Ne w   -> sbcond w NE
 
-          MO_S_Gt w -> bcond w SGT
-          MO_S_Ge w -> bcond w SGE
-          MO_S_Lt w -> bcond w SLT
-          MO_S_Le w -> bcond w SLE
-          MO_U_Gt w -> bcond w UGT
-          MO_U_Ge w -> bcond w UGE
-          MO_U_Lt w -> bcond w ULT
-          MO_U_Le w -> bcond w ULE
+          MO_S_Gt w -> sbcond w SGT
+          MO_S_Ge w -> sbcond w SGE
+          MO_S_Lt w -> sbcond w SLT
+          MO_S_Le w -> sbcond w SLE
+          MO_U_Gt w -> ubcond w UGT
+          MO_U_Ge w -> ubcond w UGE
+          MO_U_Lt w -> ubcond w ULT
+          MO_U_Le w -> ubcond w ULE
           _ -> pprPanic "AArch64.genCondJump:case mop: " (text $ show expr)
       _ -> pprPanic "AArch64.genCondJump: " (text $ show expr)
 

@@ -373,6 +373,7 @@ class Foldable t where
     -- >>> foldl (\a _ -> a) 0 $ repeat 1
     -- * Hangs forever *
     --
+    -- WARNING: When it comes to lists, you always want to use either 'foldl'' or 'foldr' instead.
     foldl :: (b -> a -> b) -> b -> t a -> b
     foldl f z t = appEndo (getDual (foldMap (Dual . Endo . flip f) t)) z
     -- There's no point mucking around with coercions here,
@@ -604,6 +605,8 @@ class Foldable t where
     -- >>> maximum Nothing
     -- *** Exception: maximum: empty structure
     --
+    -- WARNING: This function is partial for possibly-empty structures like lists.
+    --
     -- @since 4.8.0.0
     maximum :: forall a . Ord a => t a -> a
     maximum = fromMaybe (errorWithoutStackTrace "maximum: empty structure") .
@@ -629,6 +632,8 @@ class Foldable t where
     --
     -- >>> minimum Nothing
     -- *** Exception: minimum: empty structure
+    --
+    -- WARNING: This function is partial for possibly-empty structures like lists.
     --
     -- @since 4.8.0.0
     minimum :: forall a . Ord a => t a -> a
@@ -1179,7 +1184,6 @@ msum = asum
 --
 -- >>> concat [[1, 2, 3], [4, 5], [6], []]
 -- [1,2,3,4,5,6]
---
 concat :: Foldable t => t [a] -> [a]
 concat xs = build (\c n -> foldr (\x y -> foldr c y x) n xs)
 {-# INLINE concat #-}
@@ -1313,6 +1317,8 @@ all p = getAll #. foldMap (All #. p)
 --
 -- >>> maximumBy (compare `on` length) ["Hello", "World", "!", "Longest", "bar"]
 -- "Longest"
+--
+-- WARNING: This function is partial for possibly-empty structures like lists.
 
 -- See Note [maximumBy/minimumBy space usage]
 maximumBy :: Foldable t => (a -> a -> Ordering) -> t a -> a
@@ -1335,6 +1341,8 @@ maximumBy cmp = fromMaybe (errorWithoutStackTrace "maximumBy: empty structure")
 --
 -- >>> minimumBy (compare `on` length) ["Hello", "World", "!", "Longest", "bar"]
 -- "!"
+--
+-- WARNING: This function is partial for possibly-empty structures like lists.
 
 -- See Note [maximumBy/minimumBy space usage]
 minimumBy :: Foldable t => (a -> a -> Ordering) -> t a -> a
@@ -1491,7 +1499,7 @@ https://gitlab.haskell.org/ghc/ghc/-/issues/17867 for more context.
 -- $overview
 --
 -- #overview#
--- The Foldabla class generalises some common "Data.List" functions to
+-- The Foldable class generalises some common "Data.List" functions to
 -- structures that can be reduced to a summary value one element at a time.
 --
 -- == Left and right folds
@@ -1645,8 +1653,9 @@ https://gitlab.haskell.org/ghc/ghc/-/issues/17867 for more context.
 --
 -- > myconcat xs = foldr (\a b -> a ++ b) [] xs
 --
--- is subtantially cheaper (linear in the length of the consumed portion of the
--- final list, thus e.g. constant time/space for just the first element) than:
+-- is substantially cheaper (linear in the length of the consumed portion of
+-- the final list, thus e.g. constant time/space for just the first element)
+-- than:
 --
 -- > revconcat xs = foldr (\a b -> b ++ a) [] xs
 --
@@ -1837,7 +1846,7 @@ https://gitlab.haskell.org/ghc/ghc/-/issues/17867 for more context.
 -- $shortcircuit
 --
 -- #short#
--- Examples of short-cicuit reduction include various boolean predicates that
+-- Examples of short-circuit reduction include various boolean predicates that
 -- test whether some or all the elements of a structure satisfy a given
 -- condition.  Because these don't necessarily consume the entire list, they
 -- typically employ `foldr` with an operator that is conditionally strict in
@@ -1872,7 +1881,7 @@ https://gitlab.haskell.org/ghc/ghc/-/issues/17867 for more context.
 -- * Boolean predicate folds.
 --   These functions examine elements strictly until a condition is met,
 --   but then return a result ignoring the rest (lazy in the tail).  These
---   may loop forever given an unbounded input where no elements satisy the
+--   may loop forever given an unbounded input where no elements satisfy the
 --   termination condition.
 --
 --     @
@@ -1903,8 +1912,8 @@ https://gitlab.haskell.org/ghc/ghc/-/issues/17867 for more context.
 --   in some monads are conditionally lazy and can /short-circuit/ a chain of
 --   computations.  The below folds will terminate as early as possible, but
 --   even infinite loops can be productive here, when evaluated solely for
---   their stream of IO side-effects.  See "Data.Traversable#validation"
---   for some additional discussion.
+--   their stream of IO side-effects.  See "Data.Traversable#effectful"
+--   for discussion of related functions.
 --
 --     @
 --     `traverse_`  :: (Foldable t, Applicative f) => (a -> f b) -> t a -> f ()
@@ -2331,7 +2340,7 @@ https://gitlab.haskell.org/ghc/ghc/-/issues/17867 for more context.
 -- #laws#
 --
 -- The type constructor 'Endo' from "Data.Monoid", associates with each type
--- __@b@__ the __@newtype@__-encapulated type of functions mapping __@b@__ to
+-- __@b@__ the __@newtype@__-encapsulated type of functions mapping __@b@__ to
 -- itself.  Functions from a type to itself are called /endomorphisms/, hence
 -- the name /Endo/.  The type __@Endo b@__ is a 'Monoid' under function
 -- composition:
@@ -2368,7 +2377,7 @@ https://gitlab.haskell.org/ghc/ghc/-/issues/17867 for more context.
 -- > foldl f z t = appEndo (getDual (foldMap (Dual . Endo . flip f) t)) z
 --
 -- When the elements of the structure are taken from a 'Monoid', the
--- defintion of 'fold' must agree with __@foldMap id@__:
+-- definition of 'fold' must agree with __@foldMap id@__:
 --
 -- > fold = foldMap id
 --
@@ -2418,7 +2427,9 @@ https://gitlab.haskell.org/ghc/ghc/-/issues/17867 for more context.
 -- The more general methods of the 'Foldable' class are now exported by the
 -- "Prelude" in place of the original List-specific methods (see the
 -- [FTP Proposal](https://wiki.haskell.org/Foldable_Traversable_In_Prelude)).
--- The List-specific variants are still available in "Data.List".
+-- The List-specific variants are for now still available in "GHC.OldList", but
+-- that module is intended only as a transitional aid, and may be removed in
+-- the future.
 --
 -- Surprises can arise from the @Foldable@ instance of the 2-tuple @(a,)@ which
 -- now behaves as a 1-element @Foldable@ container in its second slot.  In

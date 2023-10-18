@@ -141,7 +141,6 @@ lib/settings :
 	@echo ',("LLVM opt command", "$(SettingsOptCommand)")' >> $@
 	@echo ',("LLVM clang command", "$(SettingsClangCommand)")' >> $@
 	@echo
-	@echo ',("bignum backend", "$(BIGNUM_BACKEND)")' >> $@
 	@echo ',("Use interpreter", "$(GhcWithInterpreter)")' >> $@
 	@echo ',("Support SMP", "$(GhcWithSMP)")' >> $@
 	@echo ',("RTS ways", "$(GhcRTSWays)")' >> $@
@@ -201,8 +200,8 @@ update_package_db: install_bin install_lib
 	@echo "$(PKG_CONFS)"
 	@echo "Updating the package DB"
 	$(foreach p, $(PKG_CONFS),\
-		$(call patchpackageconf,$(shell echo $(notdir $p) | sed 's/-\([0-9]*[0-9]\.\)*conf//g'),$(shell echo "$p" | sed 's:xxx:   :g'),$(docdir),$(shell realpath --relative-to="$(ActualLibsDir)" "$(docdir)")))
-	'$(WrapperBinsDir)/ghc-pkg' recache
+		$(call patchpackageconf,$(shell echo $(notdir $p) | sed 's/-\([0-9]*[0-9]\.\)*conf//g'),$(shell echo "$p" | sed 's:xxx:   :g'),$(docdir),$(shell mk/relpath.sh "$(ActualLibsDir)" "$(docdir)")))
+	'$(WrapperBinsDir)/$(CrossCompilePrefix)ghc-pkg' recache
 
 install_mingw:
 	@echo "Installing MingGW"

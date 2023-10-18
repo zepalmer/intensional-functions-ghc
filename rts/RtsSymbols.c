@@ -33,6 +33,18 @@
 #include <elf.h> /* _DYNAMIC */
 #endif
 
+#if defined(HAVE_UNISTD_H)
+#include <unistd.h> /* environ */
+#endif
+
+#if !HAVE_DECL_ENVIRON
+/* We must provide a prototype for environ since depending upon the libc
+ * version it may or may not be provided by unistd.h. See #20577 and #20861.
+ */
+extern char **environ;
+#endif
+
+
 /* -----------------------------------------------------------------------------
  * Symbols to be inserted into the RTS symbol table.
  */
@@ -59,8 +71,6 @@
       SymI_HasProto(signal_handlers)            \
       SymI_HasProto(stg_sig_install)            \
       SymI_HasProto(rtsTimerSignal)             \
-      SymI_HasProto_redirect(atexit, atexit, STRENGTH_STRONG) /* See Note [Strong symbols] */ \
-      SymI_NeedsDataProto(environ)              \
       SymI_NeedsDataProto(nocldstop)
 #endif
 
@@ -154,7 +164,6 @@
       SymI_HasProto(stg_asyncDoProczh)                   \
       SymI_HasProto(rts_InstallConsoleEvent)             \
       SymI_HasProto(rts_ConsoleHandlerDone)              \
-      SymI_HasProto(atexit)                              \
       RTS_WIN32_ONLY(SymI_NeedsProto(___chkstk_ms))      \
       RTS_WIN64_ONLY(SymI_NeedsProto(___chkstk_ms))      \
       RTS_WIN32_ONLY(SymI_HasProto(_imp___environ))      \
@@ -365,13 +374,14 @@
    SymI_HasProto(unblockUserSignals)
 #else
 #define RTS_USER_SIGNALS_SYMBOLS             \
-   SymI_HasProto(registerIOCPHandle)      \
+   SymI_HasProto(registerIOCPHandle)         \
    SymI_HasProto(getOverlappedEntries)       \
    SymI_HasProto(completeSynchronousRequest) \
    SymI_HasProto(registerAlertableWait)      \
    SymI_HasProto(sendIOManagerEvent)         \
    SymI_HasProto(readIOManagerEvent)         \
    SymI_HasProto(getIOManagerEvent)          \
+   SymI_HasProto(ioManagerFinished)          \
    SymI_HasProto(console_handler)
 #endif
 
@@ -1051,6 +1061,11 @@
 #define RTS_LIBGCC_SYMBOLS
 #endif
 
+// Symbols defined by libc
+#define RTS_LIBC_SYMBOLS                               \
+      SymI_HasProto_redirect(atexit, atexit, STRENGTH_STRONG) /* See Note [Strong symbols] */ \
+      SymI_HasProto(environ)
+
 #if !defined(DYNAMIC) && defined(linux_HOST_OS)
 // we need these for static musl builds. However when
 // linking shared objects (DLLs) this will fail, hence
@@ -1088,6 +1103,7 @@ RTS_POSIX_ONLY_SYMBOLS
 RTS_MINGW_ONLY_SYMBOLS
 RTS_DARWIN_ONLY_SYMBOLS
 RTS_OPENBSD_ONLY_SYMBOLS
+RTS_LIBC_SYMBOLS
 RTS_LIBGCC_SYMBOLS
 RTS_FINI_ARRAY_SYMBOLS
 RTS_LIBFFI_SYMBOLS

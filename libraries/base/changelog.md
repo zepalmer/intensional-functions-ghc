@@ -1,5 +1,14 @@
 # Changelog for [`base` package](http://hackage.haskell.org/package/base)
-\
+
+## 4.16.1.0 *Feb 2022*
+
+  * Shipped with GHC 9.2.2
+
+  * The following Foreign C types now have an instance of `Ix`:
+    CChar, CSChar, CUChar, CShort, CUShort, CInt, CUInt, CLong, CULong,
+    CPtrdiff, CSize, CWchar, CSigAtomic, CLLong, CULLong, CBool, CIntPtr, CUIntPtr,
+    CIntMax, CUIntMax.
+
 ## 4.16.0.0 *Nov 2021*
 
   * Shipped with GHC 9.2.1
@@ -53,6 +62,18 @@
 
   * `fromInteger :: Integer -> Float/Double` now consistently round to the
     nearest value, with ties to even.
+
+  * The `Data.Int.Int{8,16,32}` (resp. `Data.Word.Word{8,16,32}`) types are now
+    represented by their associated fixed-width unlifted types rather than
+    `Int#` (resp. `Word#`).
+
+  * Additions to `Data.Bits`:
+
+    - Newtypes `And`, `Ior`, `Xor` and `Iff` which wrap their argument,
+      and whose `Semigroup` instances are defined using `(.&.)`, `(.|.)`, `xor`
+      and ```\x y -> complement (x `xor` y)```, respectively.
+
+    - `oneBits :: FiniteBits a => a`, `oneBits = complement zeroBits`.
 
 ## 4.15.0.0 *Feb 2021*
 

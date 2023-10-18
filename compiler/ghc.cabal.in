@@ -1,6 +1,7 @@
 -- WARNING: ghc.cabal is automatically generated from ghc.cabal.in by
 -- ./configure.  Make sure you are editing ghc.cabal.in, not ghc.cabal.
 
+Cabal-Version: 1.22
 Name: ghc
 Version: @ProjectVersionMunged@
 License: BSD3
@@ -21,7 +22,6 @@ Description:
     for more information.
 Category: Development
 Build-Type: Simple
-Cabal-Version: >=1.10
 
 Flag internal-interpreter
     Description: Build with internal interpreter support.
@@ -71,7 +71,6 @@ Library
                    hpc        == 0.6.*,
                    transformers == 0.5.*,
                    exceptions == 0.10.*,
-                   parsec,
                    ghc-boot   == @ProjectVersionMunged@,
                    ghc-heap   == @ProjectVersionMunged@,
                    ghci == @ProjectVersionMunged@
@@ -464,7 +463,6 @@ Library
         GHC.Iface.Tidy.StaticPtrTable
         GHC.IfaceToCore
         GHC.Iface.Type
-        GHC.Iface.UpdateIdInfos
         GHC.Linker
         GHC.Linker.Dynamic
         GHC.Linker.ExtraObj

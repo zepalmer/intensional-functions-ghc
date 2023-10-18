@@ -304,10 +304,9 @@ saveThreadState profile = do
 
    , -- tso->stackobj->sp = Sp;
      mkStore (cmmOffset platform
-                        (CmmLoad (cmmOffset platform
+                        (cmmLoadBWord platform (cmmOffset platform
                                             (CmmReg (CmmLocal tso))
-                                            (tso_stackobj profile))
-                                 (bWord platform))
+                                            (tso_stackobj profile)))
                         (stack_SP profile))
              spExpr
 
@@ -397,7 +396,7 @@ emitPopTupleRegs regs_live = do
                                       (widthInBytes $ typeWidth reg_ty)
             adj_sp   = mkAssign spReg
                                 (cmmOffset platform spExpr width)
-            restore_reg = mkAssign (CmmGlobal reg) (CmmLoad spExpr reg_ty)
+            restore_reg = mkAssign (CmmGlobal reg) (CmmLoad spExpr reg_ty NaturallyAligned)
         in mkCmmIfThen cond $ catAGraphs [restore_reg, adj_sp]
   emit . catAGraphs =<< mapM save_arg regs
 
@@ -445,7 +444,7 @@ closeNursery profile tso = do
     let alloc =
            CmmMachOp (mo_wordSub platform)
               [ cmmOffsetW platform hpExpr 1
-              , CmmLoad (nursery_bdescr_start platform cnreg) (bWord platform)
+              , cmmLoadBWord platform (nursery_bdescr_start platform cnreg)
               ]
 
         alloc_limit = cmmOffset platform (CmmReg tsoreg) (tso_alloc_limit profile)
@@ -453,7 +452,7 @@ closeNursery profile tso = do
 
     -- tso->alloc_limit += alloc
     mkStore alloc_limit (CmmMachOp (MO_Sub W64)
-                               [ CmmLoad alloc_limit b64
+                               [ CmmLoad alloc_limit b64 NaturallyAligned
                                , CmmMachOp (mo_WordTo64 platform) [alloc] ])
    ]
 
@@ -474,9 +473,9 @@ loadThreadState profile = do
     -- tso = CurrentTSO;
     mkAssign (CmmLocal tso) currentTSOExpr,
     -- stack = tso->stackobj;
-    mkAssign (CmmLocal stack) (CmmLoad (cmmOffset platform (CmmReg (CmmLocal tso)) (tso_stackobj profile)) (bWord platform)),
+    mkAssign (CmmLocal stack) (cmmLoadBWord platform (cmmOffset platform (CmmReg (CmmLocal tso)) (tso_stackobj profile))),
     -- Sp = stack->sp;
-    mkAssign spReg (CmmLoad (cmmOffset platform (CmmReg (CmmLocal stack)) (stack_SP profile)) (bWord platform)),
+    mkAssign spReg (cmmLoadBWord platform (cmmOffset platform (CmmReg (CmmLocal stack)) (stack_SP profile))),
     -- SpLim = stack->stack + RESERVED_STACK_WORDS;
     mkAssign spLimReg (cmmOffsetW platform (cmmOffset platform (CmmReg (CmmLocal stack)) (stack_STACK profile))
                                 (pc_RESERVED_STACK_WORDS (platformConstants platform))),
@@ -487,9 +486,8 @@ loadThreadState profile = do
     open_nursery,
     -- and load the current cost centre stack from the TSO when profiling:
     if profileIsProfiling profile
-       then storeCurCCS
-              (CmmLoad (cmmOffset platform (CmmReg (CmmLocal tso))
-                 (tso_CCCS profile)) (ccsType platform))
+       then let ccs_ptr = cmmOffset platform (CmmReg (CmmLocal tso)) (tso_CCCS profile)
+            in storeCurCCS (CmmLoad ccs_ptr (ccsType platform) NaturallyAligned)
        else mkNop
    ]
 
@@ -544,12 +542,12 @@ openNursery profile tso = do
   -- stg_returnToStackTop in rts/StgStartup.cmm.
   pure $ catAGraphs [
      mkAssign cnreg currentNurseryExpr,
-     mkAssign bdfreereg  (CmmLoad (nursery_bdescr_free platform cnreg)  (bWord platform)),
+     mkAssign bdfreereg  (cmmLoadBWord platform (nursery_bdescr_free platform cnreg)),
 
      -- Hp = CurrentNursery->free - 1;
      mkAssign hpReg (cmmOffsetW platform (CmmReg bdfreereg) (-1)),
 
-     mkAssign bdstartreg (CmmLoad (nursery_bdescr_start platform cnreg) (bWord platform)),
+     mkAssign bdstartreg (cmmLoadBWord platform (nursery_bdescr_start platform cnreg)),
 
      -- HpLim = CurrentNursery->start +
      --              CurrentNursery->blocks*BLOCK_SIZE_W - 1;
@@ -557,11 +555,11 @@ openNursery profile tso = do
          (cmmOffsetExpr platform
              (CmmReg bdstartreg)
              (cmmOffset platform
-               (CmmMachOp (mo_wordMul platform) [
-                 CmmMachOp (MO_SS_Conv W32 (wordWidth platform))
-                   [CmmLoad (nursery_bdescr_blocks platform cnreg) b32],
-                 mkIntExpr platform (pc_BLOCK_SIZE (platformConstants platform))
-                ])
+               (CmmMachOp (mo_wordMul platform)
+                 [ CmmMachOp (MO_SS_Conv W32 (wordWidth platform))
+                     [CmmLoad (nursery_bdescr_blocks platform cnreg) b32 NaturallyAligned]
+                 , mkIntExpr platform (pc_BLOCK_SIZE (platformConstants platform))
+                 ])
                (-1)
              )
          ),
@@ -575,7 +573,7 @@ openNursery profile tso = do
 
      -- tso->alloc_limit += alloc
      mkStore alloc_limit (CmmMachOp (MO_Add W64)
-                               [ CmmLoad alloc_limit b64
+                               [ CmmLoad alloc_limit b64 NaturallyAligned
                                , CmmMachOp (mo_WordTo64 platform) [alloc] ])
 
    ]
