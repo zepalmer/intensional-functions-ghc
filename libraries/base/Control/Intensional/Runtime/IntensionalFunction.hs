@@ -38,14 +38,7 @@ import Control.Intensional.Runtime.NonEmptyList
 Definition of intensional functions.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -}
 
-data Label
-    = Label { filename  :: !String
-            , startLine :: !Int
-            , startCol  :: !Int
-            , endLine   :: !Int
-            , endCol    :: !Int
-            , genIndex  :: !Int -- the index of the function at this location
-            }
+data Label = Label !Int -- a hash of relevant location information
     deriving (Eq, Ord, Show)
 
 type family ExtensionalFunctionF

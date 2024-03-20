@@ -109,7 +109,8 @@ module GHC.Data.FastString
         unpackPtrString,
 
         -- ** Operations
-        lengthPS
+        lengthPS,
+        hashFastString
        ) where
 
 #include "HsVersions.h"

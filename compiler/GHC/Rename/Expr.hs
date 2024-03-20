@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP                 #-}
 {-# LANGUAGE ConstraintKinds     #-}
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE MagicHash           #-}
 {-# LANGUAGE MultiWayIf          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies        #-}
@@ -456,14 +457,18 @@ rnExpr (HsItsUncLam genIndex matches)
     mkLabelExprFromLocationAndIndex loc idx =
       case loc of
         RealSrcSpan rss _ ->
+          let hashcombine x y = x * 7 + y in
+          let hash :: Int
+              hash =
+                idx `hashcombine`
+                (srcSpanStartLine rss) `hashcombine`
+                (srcSpanStartCol rss) `hashcombine`
+                (srcSpanEndLine rss) `hashcombine`
+                (srcSpanEndCol rss) `hashcombine`
+                (fromIntegral $ hashFastString $ srcSpanFile rss)
+          in
           mkCallExpr (mkVar intensionalFunctionsLabelDataConName)
-            [ mkString $ srcSpanFile rss
-            , mkInt $ srcSpanStartLine rss
-            , mkInt $ srcSpanStartCol rss
-            , mkInt $ srcSpanEndLine rss
-            , mkInt $ srcSpanEndCol rss
-            , mkInt idx
-            ]
+            [ mkInt hash ]
         UnhelpfulSpan _ ->
           -- ITSTODO: I don't know... hash the AST or something?
           itsPanic "intensional function label for unhelpful spans?"
